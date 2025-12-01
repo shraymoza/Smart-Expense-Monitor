@@ -143,6 +143,96 @@ resource "aws_api_gateway_integration_response" "options_receipts" {
   }
 }
 
+# CORS Configuration for /expenses
+resource "aws_api_gateway_method" "options_expenses" {
+  rest_api_id   = aws_api_gateway_rest_api.main.id
+  resource_id   = aws_api_gateway_resource.expenses.id
+  http_method   = "OPTIONS"
+  authorization = "NONE"
+}
+
+resource "aws_api_gateway_integration" "options_expenses" {
+  rest_api_id = aws_api_gateway_rest_api.main.id
+  resource_id = aws_api_gateway_resource.expenses.id
+  http_method = aws_api_gateway_method.options_expenses.http_method
+  type        = "MOCK"
+
+  request_templates = {
+    "application/json" = "{\"statusCode\": 200}"
+  }
+}
+
+resource "aws_api_gateway_method_response" "options_expenses" {
+  rest_api_id = aws_api_gateway_rest_api.main.id
+  resource_id = aws_api_gateway_resource.expenses.id
+  http_method = aws_api_gateway_method.options_expenses.http_method
+  status_code = "200"
+
+  response_parameters = {
+    "method.response.header.Access-Control-Allow-Headers" = true
+    "method.response.header.Access-Control-Allow-Methods" = true
+    "method.response.header.Access-Control-Allow-Origin"  = true
+  }
+}
+
+resource "aws_api_gateway_integration_response" "options_expenses" {
+  rest_api_id = aws_api_gateway_rest_api.main.id
+  resource_id = aws_api_gateway_resource.expenses.id
+  http_method = aws_api_gateway_method.options_expenses.http_method
+  status_code = aws_api_gateway_method_response.options_expenses.status_code
+
+  response_parameters = {
+    "method.response.header.Access-Control-Allow-Headers" = "'Content-Type,X-Amz-Date,Authorization,X-Api-Key,X-Amz-Security-Token'"
+    "method.response.header.Access-Control-Allow-Methods" = "'GET,POST,OPTIONS'"
+    "method.response.header.Access-Control-Allow-Origin"  = "'*'"
+  }
+}
+
+# CORS Configuration for /expenses/{id}
+resource "aws_api_gateway_method" "options_expense_id" {
+  rest_api_id   = aws_api_gateway_rest_api.main.id
+  resource_id   = aws_api_gateway_resource.expense_id.id
+  http_method   = "OPTIONS"
+  authorization = "NONE"
+}
+
+resource "aws_api_gateway_integration" "options_expense_id" {
+  rest_api_id = aws_api_gateway_rest_api.main.id
+  resource_id = aws_api_gateway_resource.expense_id.id
+  http_method = aws_api_gateway_method.options_expense_id.http_method
+  type        = "MOCK"
+
+  request_templates = {
+    "application/json" = "{\"statusCode\": 200}"
+  }
+}
+
+resource "aws_api_gateway_method_response" "options_expense_id" {
+  rest_api_id = aws_api_gateway_rest_api.main.id
+  resource_id = aws_api_gateway_resource.expense_id.id
+  http_method = aws_api_gateway_method.options_expense_id.http_method
+  status_code = "200"
+
+  response_parameters = {
+    "method.response.header.Access-Control-Allow-Headers" = true
+    "method.response.header.Access-Control-Allow-Methods" = true
+    "method.response.header.Access-Control-Allow-Origin"  = true
+  }
+}
+
+resource "aws_api_gateway_integration_response" "options_expense_id" {
+  rest_api_id = aws_api_gateway_rest_api.main.id
+  resource_id = aws_api_gateway_resource.expense_id.id
+  http_method = aws_api_gateway_method.options_expense_id.http_method
+  status_code = aws_api_gateway_method_response.options_expense_id.status_code
+
+  response_parameters = {
+    "method.response.header.Access-Control-Allow-Headers" = "'Content-Type,X-Amz-Date,Authorization,X-Api-Key,X-Amz-Security-Token'"
+    "method.response.header.Access-Control-Allow-Methods" = "'GET,POST,OPTIONS'"
+    "method.response.header.Access-Control-Allow-Origin"  = "'*'"
+  }
+}
+
 # API Gateway Deployment
 resource "aws_api_gateway_deployment" "main" {
   depends_on = [
@@ -151,10 +241,43 @@ resource "aws_api_gateway_deployment" "main" {
     aws_api_gateway_method.get_expenses,
     aws_api_gateway_integration.get_expenses,
     aws_api_gateway_method.get_expense,
-    aws_api_gateway_integration.get_expense
+    aws_api_gateway_integration.get_expense,
+    aws_api_gateway_method.options_receipts,
+    aws_api_gateway_integration.options_receipts,
+    aws_api_gateway_method_response.options_receipts,
+    aws_api_gateway_integration_response.options_receipts,
+    aws_api_gateway_method.options_expenses,
+    aws_api_gateway_integration.options_expenses,
+    aws_api_gateway_method_response.options_expenses,
+    aws_api_gateway_integration_response.options_expenses,
+    aws_api_gateway_method.options_expense_id,
+    aws_api_gateway_integration.options_expense_id,
+    aws_api_gateway_method_response.options_expense_id,
+    aws_api_gateway_integration_response.options_expense_id
   ]
 
   rest_api_id = aws_api_gateway_rest_api.main.id
+
+  # Force redeployment when any of these resources change
+  triggers = {
+    redeployment = sha1(jsonencode([
+      aws_api_gateway_resource.receipts.id,
+      aws_api_gateway_resource.expenses.id,
+      aws_api_gateway_resource.expense_id.id,
+      aws_api_gateway_method.upload_receipt.id,
+      aws_api_gateway_method.get_expenses.id,
+      aws_api_gateway_method.get_expense.id,
+      aws_api_gateway_method.options_receipts.id,
+      aws_api_gateway_method.options_expenses.id,
+      aws_api_gateway_method.options_expense_id.id,
+      aws_api_gateway_integration.upload_receipt.id,
+      aws_api_gateway_integration.get_expenses.id,
+      aws_api_gateway_integration.get_expense.id,
+      aws_api_gateway_integration.options_receipts.id,
+      aws_api_gateway_integration.options_expenses.id,
+      aws_api_gateway_integration.options_expense_id.id
+    ]))
+  }
 
   lifecycle {
     create_before_destroy = true
@@ -167,8 +290,12 @@ resource "aws_api_gateway_stage" "main" {
   rest_api_id   = aws_api_gateway_rest_api.main.id
   stage_name    = var.environment
 
+  # Ensure stage is updated when deployment changes
   lifecycle {
-    ignore_changes = [deployment_id]
+    create_before_destroy = true
+    replace_triggered_by = [
+      aws_api_gateway_deployment.main.id
+    ]
   }
 
   tags = {

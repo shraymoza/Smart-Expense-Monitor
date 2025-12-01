@@ -154,7 +154,19 @@ export async function uploadToS3(presignedUrl, file) {
  */
 export async function getExpenses() {
   try {
-    return await apiRequest('/expenses');
+    console.log('Fetching expenses...');
+    const response = await apiRequest('/expenses');
+    // Handle both direct array and wrapped responses
+    if (Array.isArray(response)) {
+      return response;
+    } else if (response.body) {
+      // If response is wrapped in body (API Gateway proxy)
+      const parsed = typeof response.body === 'string' ? JSON.parse(response.body) : response.body;
+      return Array.isArray(parsed) ? parsed : (parsed.items || []);
+    } else if (response.items) {
+      return response.items;
+    }
+    return [];
   } catch (error) {
     console.error('Error fetching expenses:', error);
     throw error;

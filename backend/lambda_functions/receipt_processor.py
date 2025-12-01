@@ -2,12 +2,21 @@ import json
 import boto3
 import os
 from datetime import datetime
+from decimal import Decimal
 import uuid
+import re
 
 # Initialize AWS clients
 dynamodb = boto3.resource('dynamodb')
 s3_client = boto3.client('s3')
 textract_client = boto3.client('textract')
+
+
+def decimal_default(obj):
+    """JSON encoder helper to convert Decimal to float"""
+    if isinstance(obj, Decimal):
+        return float(obj)
+    raise TypeError(f"Object of type {type(obj)} is not JSON serializable")
 
 # Get table names from environment variables
 EXPENSES_TABLE = os.environ.get('EXPENSES_TABLE_NAME')
@@ -64,7 +73,10 @@ def handle_s3_event(event):
             # Extract text from receipt using Textract (if enabled)
             extracted_text = ""
             if ENABLE_TEXTRACT:
+                print(f"Textract is enabled. Extracting text from receipt...")
                 extracted_text = extract_text_from_receipt(bucket, key)
+            else:
+                print("Textract is disabled. Skipping text extraction.")
             
             # Parse receipt data (simplified - implement actual parsing logic)
             receipt_data = parse_receipt_data(extracted_text, key, userId)
@@ -147,6 +159,7 @@ def handle_api_event(event):
 def extract_text_from_receipt(bucket, key):
     """Extract text from receipt using AWS Textract"""
     try:
+        print(f"Starting Textract extraction for s3://{bucket}/{key}")
         response = textract_client.detect_document_text(
             Document={
                 'S3Object': {
@@ -156,48 +169,343 @@ def extract_text_from_receipt(bucket, key):
             }
         )
         
+        print(f"Textract response received. Block count: {len(response.get('Blocks', []))}")
+        
         # Extract text blocks
         text_blocks = []
         for block in response.get('Blocks', []):
             if block['BlockType'] == 'LINE':
-                text_blocks.append(block.get('Text', ''))
+                text = block.get('Text', '')
+                text_blocks.append(text)
         
-        return '\n'.join(text_blocks)
+        extracted_text = '\n'.join(text_blocks)
+        text_length = len(extracted_text)
+        print(f"Textract extraction complete. Extracted {text_length} characters, {len(text_blocks)} lines")
+        
+        # Log first 200 characters for debugging
+        if extracted_text:
+            preview = extracted_text[:200].replace('\n', ' ')
+            print(f"Extracted text preview (first 200 chars): {preview}...")
+        else:
+            print("Warning: No text extracted from receipt")
+        
+        return extracted_text
     except Exception as e:
-        print(f"Error extracting text: {str(e)}")
+        print(f"Error extracting text with Textract: {str(e)}")
+        import traceback
+        print(f"Traceback: {traceback.format_exc()}")
         return ""
 
 
 def parse_receipt_data(text, key, userId):
     """Parse receipt data from extracted text"""
-    # TODO: Implement actual receipt parsing logic
-    # This is a placeholder that extracts basic information
-    
     receipt_id = str(uuid.uuid4())
     upload_date = datetime.utcnow().isoformat()
     
-    # Extract basic info (simplified)
-    # In production, use ML/NLP to extract:
-    # - Store name
-    # - Date
-    # - Total amount
-    # - Items purchased
+    # Normalize text for easier parsing
+    text_upper = text.upper() if text else ""
+    text_lower = text.lower() if text else ""
+    lines = text.split('\n') if text else []
+    
+    # Extract store name (common patterns)
+    store_name = 'Unknown Store'
+    common_stores = {
+        'walmart': 'Walmart',
+        'target': 'Target',
+        'costco': 'Costco',
+        'amazon': 'Amazon',
+        'starbucks': 'Starbucks',
+        'mcdonald': "McDonald's",
+        'subway': 'Subway',
+        'cvs': 'CVS',
+        'walgreens': 'Walgreens',
+        'home depot': 'Home Depot',
+        'lowes': "Lowe's",
+        'best buy': 'Best Buy',
+        'kroger': 'Kroger',
+        'safeway': 'Safeway',
+        'whole foods': 'Whole Foods',
+        'trader joe': "Trader Joe's",
+        'aldi': 'Aldi',
+        'publix': 'Publix',
+        'rite aid': 'Rite Aid',
+        'dollar general': 'Dollar General',
+        'family dollar': 'Family Dollar',
+        '7-eleven': '7-Eleven',
+        'shell': 'Shell',
+        'exxon': 'Exxon',
+        'bp': 'BP',
+        'chevron': 'Chevron',
+        'mobil': 'Mobil'
+    }
+    
+    # Check first 10 lines for store name
+    for line in lines[:10]:
+        line_lower = line.lower().strip()
+        for store_key, store_value in common_stores.items():
+            if store_key in line_lower:
+                store_name = store_value
+                print(f"Found store name: {store_name}")
+                break
+        if store_name != 'Unknown Store':
+            break
+    
+    # Extract total amount (look for patterns like TOTAL, AMOUNT DUE, etc.)
+    amount = Decimal('0.0')
+    
+    # Patterns to find total amount
+    amount_patterns = [
+        r'total\s*:?\s*\$?\s*(\d+\.\d{2})',  # "TOTAL: $123.45"
+        r'total\s+amount\s*:?\s*\$?\s*(\d+\.\d{2})',  # "TOTAL AMOUNT: $123.45"
+        r'amount\s+due\s*:?\s*\$?\s*(\d+\.\d{2})',  # "AMOUNT DUE: $123.45"
+        r'grand\s+total\s*:?\s*\$?\s*(\d+\.\d{2})',  # "GRAND TOTAL: $123.45"
+        r'balance\s+due\s*:?\s*\$?\s*(\d+\.\d{2})',  # "BALANCE DUE: $123.45"
+        r'\$\s*(\d+\.\d{2})\s*$',  # "$123.45" at end of line
+        r'total\s+(\d+\.\d{2})',  # "TOTAL 123.45"
+    ]
+    
+    # Search from bottom to top (totals are usually at the end)
+    for line in reversed(lines):
+        line_upper = line.upper().strip()
+        for pattern in amount_patterns:
+            match = re.search(pattern, line_upper, re.IGNORECASE)
+            if match:
+                try:
+                    amount = Decimal(match.group(1))
+                    print(f"Found amount: ${amount}")
+                    break
+                except (ValueError, IndexError):
+                    continue
+        if amount > 0:
+            break
+    
+    # If no total found, look for largest dollar amount in the text
+    if amount == 0:
+        dollar_amounts = re.findall(r'\$?\s*(\d+\.\d{2})', text_upper)
+        if dollar_amounts:
+            try:
+                # Take the largest amount (likely the total)
+                amounts = [Decimal(amt) for amt in dollar_amounts]
+                amount = max(amounts)
+                print(f"Found largest amount: ${amount}")
+            except (ValueError, TypeError):
+                pass
+    
+    # Extract date (look for date patterns)
+    receipt_date = upload_date  # Default to upload date
+    
+    # Date patterns: MM/DD/YYYY, MM-DD-YYYY, YYYY-MM-DD, etc.
+    date_patterns = [
+        r'(\d{1,2})[/-](\d{1,2})[/-](\d{4})',  # MM/DD/YYYY or MM-DD-YYYY
+        r'(\d{4})[/-](\d{1,2})[/-](\d{1,2})',  # YYYY/MM/DD or YYYY-MM-DD
+        r'(\d{1,2})[/-](\d{1,2})[/-](\d{2})',  # MM/DD/YY or MM-DD-YY
+    ]
+    
+    for line in lines[:20]:  # Check first 20 lines
+        for pattern in date_patterns:
+            match = re.search(pattern, line)
+            if match:
+                try:
+                    groups = match.groups()
+                    if len(groups[0]) == 4:  # YYYY-MM-DD format
+                        year, month, day = groups[0], groups[1], groups[2]
+                    else:  # MM-DD-YYYY format
+                        month, day, year = groups[0], groups[1], groups[2]
+                        if len(year) == 2:
+                            year = '20' + year
+                    
+                    receipt_date = f"{year}-{month.zfill(2)}-{day.zfill(2)}"
+                    print(f"Found receipt date: {receipt_date}")
+                    break
+                except (ValueError, IndexError):
+                    continue
+        if receipt_date != upload_date:
+            break
+    
+    # Categorize based on store name
+    category = 'Other'
+    if store_name != 'Unknown Store':
+        store_lower = store_name.lower()
+        if any(x in store_lower for x in ['walmart', 'target', 'costco', 'kroger', 'safeway', 'whole foods', 'trader joe', 'aldi', 'publix']):
+            category = 'Groceries'
+        elif any(x in store_lower for x in ['starbucks', 'mcdonald', 'subway']):
+            category = 'Food & Drink'
+        elif any(x in store_lower for x in ['cvs', 'walgreens', 'rite aid']):
+            category = 'Pharmacy'
+        elif any(x in store_lower for x in ['home depot', 'lowes']):
+            category = 'Home Improvement'
+        elif any(x in store_lower for x in ['best buy']):
+            category = 'Electronics'
+        elif any(x in store_lower for x in ['shell', 'exxon', 'bp', 'chevron', 'mobil', '7-eleven']):
+            category = 'Gas & Fuel'
+        elif any(x in store_lower for x in ['amazon']):
+            category = 'Shopping'
+        elif any(x in store_lower for x in ['dollar general', 'family dollar']):
+            category = 'Discount Store'
+    
+    # Extract individual items from receipt
+    items = extract_items_from_receipt(lines, text_upper, amount)
+    
+    print(f"Parsed receipt - Store: {store_name}, Amount: ${amount}, Date: {receipt_date}, Category: {category}, Items: {len(items)}")
     
     return {
         'receiptId': receipt_id,
         'userId': userId,
         's3Key': key,
         'uploadDate': upload_date,
-        'extractedText': text[:500],  # Store first 500 chars
+        'extractedText': text[:500] if text else '',  # Store first 500 chars
         'expense_data': {
             'expenseId': receipt_id,
             'userId': userId,
-            'amount': 0.0,  # Extract from text
-            'storeName': 'Unknown Store',  # Extract from text
-            'date': upload_date,
-            'category': 'Other'
+            'amount': amount,  # Already Decimal
+            'storeName': store_name,
+            'date': receipt_date,
+            'category': category,
+            'items': items  # List of items
         }
     }
+
+
+def extract_items_from_receipt(lines, text_upper, total_amount):
+    """Extract individual items from receipt text"""
+    items = []
+    
+    if not lines:
+        return items
+    
+    # Common patterns for item lines:
+    # - Item name followed by price: "Milk $3.99"
+    # - Item name and price on same line: "Bread 2.50"
+    # - Item with quantity: "2x Apples $5.98"
+    
+    # Skip header lines (store name, address, etc.) and footer lines (total, tax, etc.)
+    skip_keywords = [
+        'TOTAL', 'SUBTOTAL', 'TAX', 'AMOUNT', 'DUE', 'CHANGE', 'CASH', 'CARD',
+        'THANK', 'RECEIPT', 'STORE', 'ADDRESS', 'PHONE', 'DATE', 'TIME',
+        'ITEM', 'DESCRIPTION', 'PRICE', 'QTY', 'QUANTITY'
+    ]
+    
+    # Find where items section likely starts (after header)
+    item_start_idx = 0
+    for i, line in enumerate(lines[:15]):
+        line_upper = line.upper().strip()
+        # Look for section headers that might indicate start of items
+        if any(keyword in line_upper for keyword in ['ITEM', 'DESCRIPTION', 'PRODUCT']):
+            item_start_idx = i + 1
+            break
+        # Or start after store name/header (usually first 3-5 lines)
+        if i > 5 and '$' in line or re.search(r'\d+\.\d{2}', line):
+            item_start_idx = i
+            break
+    
+    # Find where items section likely ends (before totals)
+    item_end_idx = len(lines)
+    for i in range(len(lines) - 1, max(0, len(lines) - 20), -1):
+        line_upper = lines[i].upper().strip()
+        if any(keyword in line_upper for keyword in ['TOTAL', 'SUBTOTAL', 'TAX', 'AMOUNT DUE']):
+            item_end_idx = i
+            break
+    
+    # Extract items from the middle section
+    item_lines = lines[item_start_idx:item_end_idx]
+    
+    for line in item_lines:
+        line = line.strip()
+        if not line or len(line) < 3:
+            continue
+        
+        line_upper = line.upper()
+        
+        # Skip if it's a header/footer keyword
+        if any(keyword in line_upper for keyword in skip_keywords):
+            continue
+        
+        # Look for price patterns in the line
+        price_patterns = [
+            r'\$?\s*(\d+\.\d{2})\s*$',  # Price at end: "Item $12.99"
+            r'\$\s*(\d+\.\d{2})',  # Price with $: "Item $12.99"
+            r'(\d+\.\d{2})\s*$',  # Price at end without $: "Item 12.99"
+        ]
+        
+        item_price = None
+        item_name = None
+        
+        for pattern in price_patterns:
+            match = re.search(pattern, line)
+            if match:
+                try:
+                    price = Decimal(match.group(1))
+                    # Only consider reasonable prices (between $0.01 and $1000)
+                    if 0.01 <= price <= 1000:
+                        item_price = price
+                        # Extract item name (everything before the price)
+                        item_name = line[:match.start()].strip()
+                        break
+                except (ValueError, IndexError):
+                    continue
+        
+        # If we found a price, create an item
+        if item_price and item_name:
+            # Clean up item name
+            item_name = re.sub(r'\s+', ' ', item_name)  # Remove extra spaces
+            item_name = item_name.strip()
+            
+            # Skip if name is too short or looks like a price/date
+            if len(item_name) < 2 or re.match(r'^\d+[\.\-\/]', item_name):
+                continue
+            
+            # Check for quantity (e.g., "2x Milk" or "3 @ $2.99")
+            quantity = Decimal('1.0')
+            qty_patterns = [
+                r'^(\d+)\s*x\s+',  # "2x Item"
+                r'^(\d+)\s*@\s*',  # "2 @ Item"
+                r'^(\d+)\s+',  # "2 Item"
+            ]
+            
+            for qty_pattern in qty_patterns:
+                qty_match = re.search(qty_pattern, item_name, re.IGNORECASE)
+                if qty_match:
+                    try:
+                        quantity = Decimal(qty_match.group(1))
+                        item_name = re.sub(qty_pattern, '', item_name, flags=re.IGNORECASE).strip()
+                    except (ValueError, IndexError):
+                        pass
+                    break
+            
+            items.append({
+                'name': item_name,
+                'price': item_price,
+                'quantity': quantity,
+                'subtotal': item_price * quantity
+            })
+    
+    # If we found items, validate and clean up
+    if items:
+        # Remove duplicates (same name and price)
+        seen = set()
+        unique_items = []
+        for item in items:
+            key = (item['name'].lower(), float(item['price']))
+            if key not in seen:
+                seen.add(key)
+                unique_items.append(item)
+        
+        items = unique_items
+        
+        # Calculate total from items and compare with receipt total
+        items_total = sum(item['subtotal'] for item in items)
+        if total_amount > 0:
+            # If items total is close to receipt total (within 10%), we're good
+            if abs(float(items_total) - float(total_amount)) / float(total_amount) > 0.1:
+                print(f"Warning: Items total (${items_total}) doesn't match receipt total (${total_amount})")
+        
+        print(f"Extracted {len(items)} items from receipt")
+        for item in items[:5]:  # Log first 5 items
+            print(f"  - {item['name']}: ${item['price']} x {item['quantity']} = ${item['subtotal']}")
+    else:
+        print("No items extracted from receipt")
+    
+    return items
 
 
 def save_receipt_metadata(key, receipt_data, userId):
@@ -220,6 +528,16 @@ def save_expense(expense_data, userId):
     expense_data['userId'] = userId  # User ID extracted from S3 key path
     expense_data['expenseId'] = expense_data.get('expenseId', str(uuid.uuid4()))
     expense_data['createdAt'] = datetime.utcnow().isoformat()
+    
+    # Convert float to Decimal for DynamoDB compatibility
+    if 'amount' in expense_data and isinstance(expense_data['amount'], float):
+        expense_data['amount'] = Decimal(str(expense_data['amount']))
+    elif 'amount' in expense_data and not isinstance(expense_data['amount'], Decimal):
+        # Handle string amounts or other types
+        try:
+            expense_data['amount'] = Decimal(str(expense_data['amount']))
+        except (ValueError, TypeError):
+            expense_data['amount'] = Decimal('0.0')
     
     expenses_table.put_item(Item=expense_data)
     print(f"Saved expense for user {userId}: {expense_data['expenseId']}")
@@ -260,13 +578,29 @@ def get_expenses(event):
             }
         )
         
+        # Convert Decimal to float for JSON serialization
+        items = response.get('Items', [])
+        for item in items:
+            if 'amount' in item and isinstance(item['amount'], Decimal):
+                item['amount'] = float(item['amount'])
+            
+            # Convert item prices and subtotals to float
+            if 'items' in item and isinstance(item['items'], list):
+                for expense_item in item['items']:
+                    if 'price' in expense_item and isinstance(expense_item['price'], Decimal):
+                        expense_item['price'] = float(expense_item['price'])
+                    if 'quantity' in expense_item and isinstance(expense_item['quantity'], Decimal):
+                        expense_item['quantity'] = float(expense_item['quantity'])
+                    if 'subtotal' in expense_item and isinstance(expense_item['subtotal'], Decimal):
+                        expense_item['subtotal'] = float(expense_item['subtotal'])
+        
         return {
             'statusCode': 200,
             'headers': {
                 'Content-Type': 'application/json',
                 'Access-Control-Allow-Origin': '*'
             },
-            'body': json.dumps(response.get('Items', []))
+            'body': json.dumps(items, default=decimal_default)
         }
     except Exception as e:
         print(f"Error fetching expenses: {str(e)}")
@@ -315,13 +649,28 @@ def get_expense(event, expenseId):
                 'body': json.dumps({'message': 'Expense not found'})
             }
         
+        # Convert Decimal to float for JSON serialization
+        item = response['Item']
+        if 'amount' in item and isinstance(item['amount'], Decimal):
+            item['amount'] = float(item['amount'])
+        
+        # Convert item prices and subtotals to float
+        if 'items' in item and isinstance(item['items'], list):
+            for expense_item in item['items']:
+                if 'price' in expense_item and isinstance(expense_item['price'], Decimal):
+                    expense_item['price'] = float(expense_item['price'])
+                if 'quantity' in expense_item and isinstance(expense_item['quantity'], Decimal):
+                    expense_item['quantity'] = float(expense_item['quantity'])
+                if 'subtotal' in expense_item and isinstance(expense_item['subtotal'], Decimal):
+                    expense_item['subtotal'] = float(expense_item['subtotal'])
+        
         return {
             'statusCode': 200,
             'headers': {
                 'Content-Type': 'application/json',
                 'Access-Control-Allow-Origin': '*'
             },
-            'body': json.dumps(response['Item'])
+            'body': json.dumps(item, default=decimal_default)
         }
     except Exception as e:
         print(f"Error fetching expense: {str(e)}")
