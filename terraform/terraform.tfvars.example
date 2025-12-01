@@ -1,0 +1,25 @@
+# Copy this file to terraform.tfvars and update with your values
+# terraform.tfvars is in .gitignore and should not be committed
+
+aws_region = "us-east-1"
+environment = "dev"
+project_name = "smart-expense-monitor"
+
+# S3 Bucket name (must be globally unique)
+# Leave empty to auto-generate
+s3_bucket_name = ""
+
+# Cognito settings
+cognito_user_pool_name = "expense-monitor-users"
+
+# Lambda settings
+lambda_runtime = "python3.11"
+lambda_timeout = 30
+lambda_memory_size = 256
+
+# Features
+enable_textract = true
+
+# CORS origins (for API Gateway)
+allowed_origins = ["*"]
+
