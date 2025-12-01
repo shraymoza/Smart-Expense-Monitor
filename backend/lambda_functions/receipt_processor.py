@@ -252,44 +252,73 @@ def parse_receipt_data(text, key, userId):
     
     # Extract total amount (look for patterns like TOTAL, AMOUNT DUE, etc.)
     amount = Decimal('0.0')
-    
-    # Patterns to find total amount
-    amount_patterns = [
-        r'total\s*:?\s*\$?\s*(\d+\.\d{2})',  # "TOTAL: $123.45"
-        r'total\s+amount\s*:?\s*\$?\s*(\d+\.\d{2})',  # "TOTAL AMOUNT: $123.45"
-        r'amount\s+due\s*:?\s*\$?\s*(\d+\.\d{2})',  # "AMOUNT DUE: $123.45"
-        r'grand\s+total\s*:?\s*\$?\s*(\d+\.\d{2})',  # "GRAND TOTAL: $123.45"
-        r'balance\s+due\s*:?\s*\$?\s*(\d+\.\d{2})',  # "BALANCE DUE: $123.45"
-        r'\$\s*(\d+\.\d{2})\s*$',  # "$123.45" at end of line
-        r'total\s+(\d+\.\d{2})',  # "TOTAL 123.45"
-    ]
-    
-    # Search from bottom to top (totals are usually at the end)
-    for line in reversed(lines):
-        line_upper = line.upper().strip()
-        for pattern in amount_patterns:
-            match = re.search(pattern, line_upper, re.IGNORECASE)
-            if match:
-                try:
-                    amount = Decimal(match.group(1))
-                    print(f"Found amount: ${amount}")
-                    break
-                except (ValueError, IndexError):
-                    continue
-        if amount > 0:
-            break
-    
-    # If no total found, look for largest dollar amount in the text
-    if amount == 0:
-        dollar_amounts = re.findall(r'\$?\s*(\d+\.\d{2})', text_upper)
+
+    # 1) Strong match: TOTAL on same or next line
+    total_match = re.search(
+        r'TOTAL[^\d\n]*\$?\s*(\d+\.\d{2})',  # TOTAL $1.34  or  TOTAL 1.34
+        text_upper,
+        re.IGNORECASE
+    )
+    if not total_match:
+        # Handles:
+        # TOTAL
+        # $1.34
+        total_match = re.search(
+            r'TOTAL[^\d\n]*\n\s*\$?\s*(\d+\.\d{2})',
+            text_upper,
+            re.IGNORECASE
+        )
+
+    if total_match:
+        amount = Decimal(total_match.group(1))
+        print(f"Found amount from TOTAL block: ${amount}")
+    else:
+        # 2) Fallback: scan lines from bottom, but ONLY lines that look like totals
+        amount_patterns = [
+            r'total\s*:?\s*\$?\s*(\d+\.\d{2})',
+            r'total\s+amount\s*:?\s*\$?\s*(\d+\.\d{2})',
+            r'amount\s+due\s*:?\s*\$?\s*(\d+\.\d{2})',
+            r'grand\s+total\s*:?\s*\$?\s*(\d+\.\d{2})',
+            r'balance\s+due\s*:?\s*\$?\s*(\d+\.\d{2})',
+            r'\$\s*(\d+\.\d{2})\s*$',          # "$123.45" at end of line
+            r'total\s+(\d+\.\d{2})',
+        ]
+        total_keywords = ('TOTAL', 'AMOUNT DUE', 'GRAND TOTAL', 'BALANCE DUE')
+
+        for line in reversed(lines):
+            line_upper = line.upper().strip()
+            if not any(k in line_upper for k in total_keywords):
+                continue
+            for pattern in amount_patterns:
+                match = re.search(pattern, line_upper, re.IGNORECASE)
+                if match:
+                    try:
+                        amount = Decimal(match.group(1))
+                        print(f"Found amount from fallback scan: ${amount}")
+                        break
+                    except (ValueError, IndexError):
+                        continue
+            if amount > 0:
+                break
+
+    # 3) Last resort: largest reasonable amount (ignore tiny discounts)
+    if amount == 0 and text_upper:
+        dollar_amounts = []
+        for line in lines:
+            up = line.upper()
+            # Skip obvious non-total lines
+            if any(k in up for k in ['DISCOUNT', 'CHANGE', 'CASH', 'PAYMENT', 'TAX', 'SUBTOTAL']):
+                continue
+            dollar_amounts.extend(re.findall(r'\$?\s*(\d+\.\d{2})', up))
+
         if dollar_amounts:
             try:
-                # Take the largest amount (likely the total)
                 amounts = [Decimal(amt) for amt in dollar_amounts]
                 amount = max(amounts)
-                print(f"Found largest amount: ${amount}")
+                print(f"Found largest amount as fallback: ${amount}")
             except (ValueError, TypeError):
                 pass
+
     
     # Extract date (look for date patterns)
     receipt_date = upload_date  # Default to upload date
