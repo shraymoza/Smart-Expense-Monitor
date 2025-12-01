@@ -1,5 +1,6 @@
 import React, { useState } from 'react';
 import { useNavigate, Link } from 'react-router-dom';
+import { signIn } from 'aws-amplify/auth';
 import './Auth.css';
 
 const Login = () => {
@@ -7,6 +8,8 @@ const Login = () => {
     email: '',
     password: ''
   });
+  const [error, setError] = useState('');
+  const [loading, setLoading] = useState(false);
   const navigate = useNavigate();
 
   const handleChange = (e) => {
@@ -14,14 +17,28 @@ const Login = () => {
       ...formData,
       [e.target.name]: e.target.value
     });
+    setError(''); // Clear error when user types
   };
 
-  const handleSubmit = (e) => {
+  const handleSubmit = async (e) => {
     e.preventDefault();
-    // For now, just navigate to dashboard directly
-    // Auth with Cognito will be implemented later
-    console.log('Login attempt:', formData);
-    navigate('/dashboard');
+    setError('');
+    setLoading(true);
+
+    try {
+      const output = await signIn({
+        username: formData.email,
+        password: formData.password
+      });
+      
+      // Navigate to dashboard on successful sign in
+      navigate('/dashboard');
+    } catch (err) {
+      console.error('Login error:', err);
+      setError(err.message || 'Failed to sign in. Please check your credentials.');
+    } finally {
+      setLoading(false);
+    }
   };
 
   return (
@@ -60,8 +77,14 @@ const Login = () => {
             />
           </div>
 
-          <button type="submit" className="auth-button">
-            Sign In
+          {error && (
+            <div className="error-message" style={{ color: 'red', marginBottom: '10px' }}>
+              {error}
+            </div>
+          )}
+
+          <button type="submit" className="auth-button" disabled={loading}>
+            {loading ? 'Signing in...' : 'Sign In'}
           </button>
         </form>
 

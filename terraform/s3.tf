@@ -42,6 +42,20 @@ resource "aws_s3_bucket_public_access_block" "receipts" {
   restrict_public_buckets = true
 }
 
+# S3 Bucket CORS Configuration
+# Required for frontend to upload files directly to S3 using presigned URLs
+resource "aws_s3_bucket_cors_configuration" "receipts" {
+  bucket = aws_s3_bucket.receipts.id
+
+  cors_rule {
+    allowed_headers = ["*"]
+    allowed_methods = ["GET", "PUT", "POST", "HEAD"]
+    allowed_origins = ["*"]  # In production, replace with your frontend domain
+    expose_headers  = ["ETag"]
+    max_age_seconds = 3000
+  }
+}
+
 # S3 Bucket Lifecycle Configuration
 resource "aws_s3_bucket_lifecycle_configuration" "receipts" {
   bucket = aws_s3_bucket.receipts.id
@@ -50,6 +64,8 @@ resource "aws_s3_bucket_lifecycle_configuration" "receipts" {
     id     = "delete_old_receipts"
     status = "Enabled"
 
+    filter {}
+
     expiration {
       days = 365 # Keep receipts for 1 year
     }
@@ -57,37 +73,47 @@ resource "aws_s3_bucket_lifecycle_configuration" "receipts" {
 }
 
 # S3 Bucket Notification for Lambda trigger
+# Triggers on uploads to any user's folder: users/{userId}/uploads/
 resource "aws_s3_bucket_notification" "receipts" {
   bucket = aws_s3_bucket.receipts.id
 
   lambda_function {
     lambda_function_arn = aws_lambda_function.receipt_processor.arn
     events              = ["s3:ObjectCreated:*"]
-    filter_prefix       = "uploads/"
-    filter_suffix        = ".jpg"
+    filter_prefix       = "users/"
+    filter_suffix       = ".jpg"
   }
 
   lambda_function {
     lambda_function_arn = aws_lambda_function.receipt_processor.arn
     events              = ["s3:ObjectCreated:*"]
-    filter_prefix       = "uploads/"
-    filter_suffix        = ".jpeg"
+    filter_prefix       = "users/"
+    filter_suffix       = ".jpeg"
   }
 
   lambda_function {
     lambda_function_arn = aws_lambda_function.receipt_processor.arn
     events              = ["s3:ObjectCreated:*"]
-    filter_prefix       = "uploads/"
-    filter_suffix        = ".png"
+    filter_prefix       = "users/"
+    filter_suffix       = ".png"
   }
 
   lambda_function {
     lambda_function_arn = aws_lambda_function.receipt_processor.arn
     events              = ["s3:ObjectCreated:*"]
-    filter_prefix       = "uploads/"
-    filter_suffix        = ".pdf"
+    filter_prefix       = "users/"
+    filter_suffix       = ".pdf"
   }
 
   depends_on = [aws_lambda_permission.s3_invoke]
 }
+
+# Note: User-specific access is enforced through:
+# 1. API Gateway with Cognito authorizer (ensures authenticated requests)
+# 2. Lambda function extracts userId from S3 key path
+# 3. DynamoDB queries filter by userId
+# 4. Frontend uploads to users/{userId}/uploads/ path
+# 
+# Direct S3 access is blocked (bucket is private)
+# All access goes through API Gateway + Lambda which enforces user isolation
 

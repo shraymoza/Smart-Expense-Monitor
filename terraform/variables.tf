@@ -58,3 +58,9 @@ variable "allowed_origins" {
   default     = ["*"]
 }
 
+variable "cognito_callback_urls" {
+  description = "Cognito callback URLs (must include scheme: http:// or https://)"
+  type        = list(string)
+  default     = ["http://localhost:3000", "http://localhost:3000/callback"]
+}
+

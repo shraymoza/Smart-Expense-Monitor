@@ -44,7 +44,7 @@ resource "aws_iam_role_policy" "lambda_policy" {
           "s3:PutObject",
           "s3:DeleteObject"
         ]
-        Resource = "${aws_s3_bucket.receipts.arn}/*"
+        Resource = "${aws_s3_bucket.receipts.arn}/users/*"
       },
       {
         Effect = "Allow"

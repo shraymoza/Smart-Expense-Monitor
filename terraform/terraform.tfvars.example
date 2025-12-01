@@ -6,8 +6,8 @@ environment = "dev"
 project_name = "smart-expense-monitor"
 
 # S3 Bucket name (must be globally unique)
-# Leave empty to auto-generate
-s3_bucket_name = ""
+# Each user's receipts are stored in: users/{userId}/uploads/
+s3_bucket_name = "smart-expense-monitor-receipts"
 
 # Cognito settings
 cognito_user_pool_name = "expense-monitor-users"
@@ -22,4 +22,9 @@ enable_textract = true
 
 # CORS origins (for API Gateway)
 allowed_origins = ["*"]
+
+# Cognito callback URLs (must include http:// or https://)
+# For local development, use: ["http://localhost:3000", "http://localhost:3000/callback"]
+# For production, use your actual domain: ["https://yourdomain.com", "https://yourdomain.com/callback"]
+cognito_callback_urls = ["http://localhost:3000", "http://localhost:3000/callback"]
 

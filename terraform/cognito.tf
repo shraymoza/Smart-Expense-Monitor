@@ -31,6 +31,9 @@ resource "aws_cognito_user_pool" "main" {
     email_sending_account = "COGNITO_DEFAULT"
   }
 
+  # Auto-verify email attribute (allows code resending)
+  auto_verified_attributes = ["email"]
+
   # Account recovery
   account_recovery_setting {
     recovery_mechanism {
@@ -41,6 +44,11 @@ resource "aws_cognito_user_pool" "main" {
 
   # MFA configuration (optional - can be enabled later)
   mfa_configuration = "OFF"
+
+  # Lifecycle: Schema attributes cannot be modified after creation
+  lifecycle {
+    ignore_changes = [schema]
+  }
 
   tags = {
     Name = "${var.project_name}-${var.environment}-user-pool"
@@ -58,8 +66,9 @@ resource "aws_cognito_user_pool_client" "main" {
   allowed_oauth_scopes                 = ["email", "openid", "profile"]
   supported_identity_providers         = ["COGNITO"]
 
-  callback_urls = var.allowed_origins
-  logout_urls   = var.allowed_origins
+  # Cognito requires URLs with schemes (http:// or https://), not "*"
+  callback_urls = var.cognito_callback_urls
+  logout_urls   = var.cognito_callback_urls
 
   explicit_auth_flows = [
     "ALLOW_USER_PASSWORD_AUTH",

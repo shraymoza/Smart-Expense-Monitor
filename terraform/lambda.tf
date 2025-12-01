@@ -8,6 +8,9 @@ resource "aws_lambda_function" "receipt_processor" {
   timeout          = var.lambda_timeout
   memory_size      = var.lambda_memory_size
 
+  # Force update when source code changes
+  source_code_hash = filebase64sha256("${path.module}/../backend/lambda_functions/receipt_processor.zip")
+
   environment {
     variables = {
       EXPENSES_TABLE_NAME  = aws_dynamodb_table.expenses.name

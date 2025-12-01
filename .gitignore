@@ -37,10 +37,13 @@ lerna-debug.log*
 .terraform.lock.hcl
 terraform.tfvars
 *.tfvars
+terraform-outputs.json
 
 # AWS
 .aws-sam/
 samconfig.toml
+aws-credentials.json
+terraform.tfvars
 
 # Python
 __pycache__/
@@ -55,3 +58,5 @@ ENV/
 # OS
 Thumbs.db
 
+/backend/lambda_functions/receipt_processor.zip
+/terraform/aws-credentials.json.example

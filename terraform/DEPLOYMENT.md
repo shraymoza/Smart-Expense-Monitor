@@ -1,20 +1,32 @@
 # Deployment Guide
 
-## Quick Start
+## Quick Start (Automated)
+
+### Option 1: Automated Deployment (Recommended)
+
+1. **Setup AWS Credentials** (one-time):
+   ```powershell
+   cd terraform
+   Copy-Item aws-credentials.json.example aws-credentials.json
+   ```
+   Edit `aws-credentials.json` and add your AWS credentials.
+
+2. **Deploy**:
+   ```powershell
+   .\deploy.ps1
+   ```
+
+That's it! The script handles everything automatically.
+
+### Option 2: Manual Deployment
+
+If you prefer manual steps:
 
 ### Step 1: Create Lambda Deployment Package
 
-Before deploying Terraform, you need to create the Lambda function zip file:
-
 ```bash
-# Navigate to lambda functions directory
 cd ../backend/lambda_functions
-
-# Create zip file (boto3 is already in Lambda runtime)
 zip receipt_processor.zip receipt_processor.py
-
-# Move it to the expected location
-mv receipt_processor.zip .
 ```
 
 ### Step 2: Configure Terraform Variables
@@ -26,30 +38,22 @@ cp terraform.tfvars.example terraform.tfvars
 
 Edit `terraform.tfvars` with your preferred settings.
 
-### Step 3: Initialize Terraform
+### Step 3: Initialize and Deploy
 
 ```bash
 terraform init
-```
-
-### Step 4: Review and Deploy
-
-```bash
-# Review what will be created
 terraform plan
-
-# Deploy infrastructure
 terraform apply
 ```
 
 Type `yes` when prompted.
 
-### Step 5: Save Outputs
+### Step 4: Save Outputs
 
-After deployment, save the outputs:
+After deployment, outputs are automatically saved to `terraform-outputs.json` by the script, or manually:
 
 ```bash
-terraform output -json > outputs.json
+terraform output -json > terraform-outputs.json
 ```
 
 You'll need these values for:
