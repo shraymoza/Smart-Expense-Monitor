@@ -197,3 +197,29 @@ export async function getReceipts() {
   }
 }
 
+/**
+ * Get user settings
+ */
+export async function getUserSettings() {
+  try {
+    console.log('Fetching user settings...');
+    return await apiRequest('/settings');
+  } catch (error) {
+    console.error('Error fetching user settings:', error);
+    throw error;
+  }
+}
+
+/**
+ * Update user settings
+ */
+export async function updateUserSettings(settings) {
+  try {
+    console.log('Updating user settings...', settings);
+    return await apiRequest('/settings', 'PUT', settings);
+  } catch (error) {
+    console.error('Error updating user settings:', error);
+    throw error;
+  }
+}
+

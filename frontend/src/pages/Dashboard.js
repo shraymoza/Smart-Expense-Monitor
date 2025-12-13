@@ -4,6 +4,7 @@ import { signOut, getCurrentUser } from 'aws-amplify/auth';
 import ReceiptUpload from '../components/ReceiptUpload';
 import ExpenseList from '../components/ExpenseList';
 import MonthlyReport from '../components/MonthlyReport';
+import UserSettings from '../components/UserSettings';
 import { getExpenses } from '../services/api';
 import './Dashboard.css';
 
@@ -121,6 +122,17 @@ const Dashboard = () => {
                 {activeView === 'history' ? 'Back to Dashboard' : 'View History'}
               </button>
             </div>
+
+            <div className="dashboard-card">
+              <h3>Settings</h3>
+              <p>Configure notification preferences</p>
+              <button 
+                className="card-button"
+                onClick={() => setActiveView(activeView === 'settings' ? 'dashboard' : 'settings')}
+              >
+                {activeView === 'settings' ? 'Back to Dashboard' : 'View Settings'}
+              </button>
+            </div>
           </div>
 
           {activeView === 'dashboard' && (
@@ -152,6 +164,12 @@ const Dashboard = () => {
           {activeView === 'report' && (
             <div className="view-section">
               <MonthlyReport />
+            </div>
+          )}
+
+          {activeView === 'settings' && (
+            <div className="view-section">
+              <UserSettings />
             </div>
           )}
         </div>

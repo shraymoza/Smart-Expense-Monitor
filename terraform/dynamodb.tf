@@ -88,3 +88,23 @@ resource "aws_dynamodb_table" "receipts" {
   }
 }
 
+# DynamoDB Table for User Settings
+resource "aws_dynamodb_table" "user_settings" {
+  name         = "${var.project_name}-${var.environment}-user-settings"
+  billing_mode = "PAY_PER_REQUEST"
+  hash_key     = "userId"
+
+  attribute {
+    name = "userId"
+    type = "S"
+  }
+
+  point_in_time_recovery {
+    enabled = true
+  }
+
+  tags = {
+    Name = "${var.project_name}-${var.environment}-user-settings"
+  }
+}
+

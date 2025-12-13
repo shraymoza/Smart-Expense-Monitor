@@ -15,8 +15,10 @@ resource "aws_lambda_function" "receipt_processor" {
     variables = {
       EXPENSES_TABLE_NAME  = aws_dynamodb_table.expenses.name
       RECEIPTS_TABLE_NAME  = aws_dynamodb_table.receipts.name
+      USER_SETTINGS_TABLE_NAME = aws_dynamodb_table.user_settings.name
       S3_BUCKET_NAME       = aws_s3_bucket.receipts.id
       ENABLE_TEXTRACT      = var.enable_textract
+      NOTIFIER_FUNCTION_NAME = "${var.project_name}-${var.environment}-expense-notifier"
     }
   }
 
@@ -56,5 +58,45 @@ resource "aws_lambda_permission" "api_gateway_invoke" {
   function_name = aws_lambda_function.receipt_processor.function_name
   principal     = "apigateway.amazonaws.com"
   source_arn    = "${aws_api_gateway_rest_api.main.execution_arn}/*/*"
+}
+
+# Lambda function for expense notifications
+resource "aws_lambda_function" "expense_notifier" {
+  filename         = "${path.module}/../backend/lambda_functions/expense_notifier.zip"
+  function_name    = "${var.project_name}-${var.environment}-expense-notifier"
+  role             = aws_iam_role.notifier_lambda_role.arn
+  handler          = "expense_notifier.lambda_handler"
+  runtime          = var.lambda_runtime
+  timeout          = 60  # May need more time for scanning all users
+  memory_size      = 256
+
+  source_code_hash = filebase64sha256("${path.module}/../backend/lambda_functions/expense_notifier.zip")
+
+  environment {
+    variables = {
+      EXPENSES_TABLE_NAME  = aws_dynamodb_table.expenses.name
+      USER_SETTINGS_TABLE_NAME = aws_dynamodb_table.user_settings.name
+      FROM_EMAIL           = var.ses_sender_email
+    }
+  }
+
+  depends_on = [
+    aws_iam_role_policy.notifier_lambda_policy,
+    aws_cloudwatch_log_group.notifier_lambda_logs
+  ]
+
+  tags = {
+    Name = "${var.project_name}-${var.environment}-expense-notifier"
+  }
+}
+
+# CloudWatch Log Group for Notifier Lambda
+resource "aws_cloudwatch_log_group" "notifier_lambda_logs" {
+  name              = "/aws/lambda/${var.project_name}-${var.environment}-expense-notifier"
+  retention_in_days = 14
+
+  tags = {
+    Name = "${var.project_name}-${var.environment}-notifier-lambda-logs"
+  }
 }
 

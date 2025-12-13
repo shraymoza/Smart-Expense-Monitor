@@ -21,11 +21,13 @@ def decimal_default(obj):
 # Get table names from environment variables
 EXPENSES_TABLE = os.environ.get('EXPENSES_TABLE_NAME')
 RECEIPTS_TABLE = os.environ.get('RECEIPTS_TABLE_NAME')
+USER_SETTINGS_TABLE = os.environ.get('USER_SETTINGS_TABLE_NAME')
 S3_BUCKET = os.environ.get('S3_BUCKET_NAME')
 ENABLE_TEXTRACT = os.environ.get('ENABLE_TEXTRACT', 'false').lower() == 'true'
 
 expenses_table = dynamodb.Table(EXPENSES_TABLE)
 receipts_table = dynamodb.Table(RECEIPTS_TABLE)
+user_settings_table = dynamodb.Table(USER_SETTINGS_TABLE) if USER_SETTINGS_TABLE else None
 
 
 def lambda_handler(event, context):
@@ -86,6 +88,8 @@ def handle_s3_event(event):
             
             if receipt_data.get('expense_data'):
                 save_expense(receipt_data['expense_data'], userId)
+                # Trigger expense check immediately after saving (async, don't wait)
+                trigger_expense_check(userId)
             
         return {
             'statusCode': 200,
@@ -138,11 +142,17 @@ def handle_api_event(event):
             if path_parameters.get('id'):
                 return get_expense(event, path_parameters['id'])
             return get_expenses(event)
+        elif '/settings' in path or '/settings' in resource:
+            return get_user_settings(event)
     
     elif http_method == 'POST':
         if '/receipts' in path or '/receipts' in resource or resource == '/receipts':
             print("Calling upload_receipt function")
             return upload_receipt(event)
+    
+    elif http_method == 'PUT':
+        if '/settings' in path or '/settings' in resource:
+            return update_user_settings(event)
     
     # Default 404
     print(f"No handler found for {http_method} {path} (resource: {resource})")
@@ -552,6 +562,32 @@ def save_receipt_metadata(key, receipt_data, userId):
     print(f"Saved receipt metadata for user {userId}: {receipt_data['receiptId']}")
 
 
+def trigger_expense_check(userId):
+    """Trigger expense notification check for a specific user"""
+    try:
+        lambda_client = boto3.client('lambda')
+        notifier_function_name = os.environ.get('NOTIFIER_FUNCTION_NAME', '')
+        
+        if not notifier_function_name:
+            print("NOTIFIER_FUNCTION_NAME not set, skipping expense check")
+            return
+        
+        # Invoke notifier Lambda with userId directly
+        lambda_client.invoke(
+            FunctionName=notifier_function_name,
+            InvocationType='Event',  # Async invocation - don't wait for response
+            Payload=json.dumps({
+                'source': 'receipt_processor',
+                'userId': userId,
+                'trigger': 'receipt_upload'
+            })
+        )
+        print(f"Triggered expense check for user {userId} after receipt upload")
+    except Exception as e:
+        print(f"Error triggering expense check for user {userId}: {str(e)}")
+        # Don't fail the receipt processing if notification fails
+
+
 def save_expense(expense_data, userId):
     """Save expense to DynamoDB"""
     expense_data['userId'] = userId  # User ID extracted from S3 key path
@@ -776,6 +812,169 @@ def upload_receipt(event):
         }
     except Exception as e:
         print(f"Error generating presigned URL: {str(e)}")
+        return {
+            'statusCode': 500,
+            'headers': {
+                'Content-Type': 'application/json',
+                'Access-Control-Allow-Origin': '*'
+            },
+            'body': json.dumps({'message': str(e)})
+        }
+
+
+def get_user_settings(event):
+    """Get user settings"""
+    try:
+        request_context = event.get('requestContext', {})
+        authorizer = request_context.get('authorizer', {})
+        claims = authorizer.get('claims', {})
+        userId = claims.get('sub') or claims.get('cognito:username')
+        
+        if not userId:
+            return {
+                'statusCode': 401,
+                'headers': {
+                    'Content-Type': 'application/json',
+                    'Access-Control-Allow-Origin': '*'
+                },
+                'body': json.dumps({'message': 'User ID not found in request'})
+            }
+        
+        if not user_settings_table:
+            return {
+                'statusCode': 500,
+                'headers': {
+                    'Content-Type': 'application/json',
+                    'Access-Control-Allow-Origin': '*'
+                },
+                'body': json.dumps({'message': 'User settings table not configured'})
+            }
+        
+        print(f"Fetching settings for user: {userId}")
+        
+        try:
+            response = user_settings_table.get_item(
+                Key={'userId': userId}
+            )
+            
+            if 'Item' in response:
+                settings = response['Item']
+                # Convert Decimal to float for JSON serialization
+                if 'monthlyThreshold' in settings and isinstance(settings['monthlyThreshold'], Decimal):
+                    settings['monthlyThreshold'] = float(settings['monthlyThreshold'])
+                return {
+                    'statusCode': 200,
+                    'headers': {
+                        'Content-Type': 'application/json',
+                        'Access-Control-Allow-Origin': '*'
+                    },
+                    'body': json.dumps(settings, default=decimal_default)
+                }
+            else:
+                # Return default settings if not found
+                return {
+                    'statusCode': 200,
+                    'headers': {
+                        'Content-Type': 'application/json',
+                        'Access-Control-Allow-Origin': '*'
+                    },
+                    'body': json.dumps({
+                        'userId': userId,
+                        'monthlyThreshold': None,
+                        'emailNotifications': False
+                    })
+                }
+        except Exception as e:
+            print(f"Error fetching user settings: {str(e)}")
+            raise
+            
+    except Exception as e:
+        print(f"Error in get_user_settings: {str(e)}")
+        return {
+            'statusCode': 500,
+            'headers': {
+                'Content-Type': 'application/json',
+                'Access-Control-Allow-Origin': '*'
+            },
+            'body': json.dumps({'message': str(e)})
+        }
+
+
+def update_user_settings(event):
+    """Update user settings"""
+    try:
+        request_context = event.get('requestContext', {})
+        authorizer = request_context.get('authorizer', {})
+        claims = authorizer.get('claims', {})
+        userId = claims.get('sub') or claims.get('cognito:username')
+        
+        if not userId:
+            return {
+                'statusCode': 401,
+                'headers': {
+                    'Content-Type': 'application/json',
+                    'Access-Control-Allow-Origin': '*'
+                },
+                'body': json.dumps({'message': 'User ID not found in request'})
+            }
+        
+        if not user_settings_table:
+            return {
+                'statusCode': 500,
+                'headers': {
+                    'Content-Type': 'application/json',
+                    'Access-Control-Allow-Origin': '*'
+                },
+                'body': json.dumps({'message': 'User settings table not configured'})
+            }
+        
+        # Parse request body
+        body = json.loads(event.get('body', '{}'))
+        monthly_threshold = body.get('monthlyThreshold')
+        email_notifications = body.get('emailNotifications', True)
+        
+        if monthly_threshold is None:
+            return {
+                'statusCode': 400,
+                'headers': {
+                    'Content-Type': 'application/json',
+                    'Access-Control-Allow-Origin': '*'
+                },
+                'body': json.dumps({'message': 'monthlyThreshold is required'})
+            }
+        
+        # Convert to Decimal for DynamoDB
+        threshold_decimal = Decimal(str(monthly_threshold))
+        
+        print(f"Updating settings for user: {userId}, threshold: ${threshold_decimal}")
+        
+        # Get user email from Cognito claims
+        user_email = claims.get('email', '')
+        
+        settings_item = {
+            'userId': userId,
+            'monthlyThreshold': threshold_decimal,
+            'emailNotifications': email_notifications,
+            'email': user_email,
+            'updatedAt': datetime.utcnow().isoformat()
+        }
+        
+        user_settings_table.put_item(Item=settings_item)
+        
+        # Convert back to float for response
+        settings_item['monthlyThreshold'] = float(threshold_decimal)
+        
+        return {
+            'statusCode': 200,
+            'headers': {
+                'Content-Type': 'application/json',
+                'Access-Control-Allow-Origin': '*'
+            },
+            'body': json.dumps(settings_item, default=decimal_default)
+        }
+        
+    except Exception as e:
+        print(f"Error updating user settings: {str(e)}")
         return {
             'statusCode': 500,
             'headers': {

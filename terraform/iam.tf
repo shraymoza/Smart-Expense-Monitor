@@ -59,7 +59,8 @@ resource "aws_iam_role_policy" "lambda_policy" {
           aws_dynamodb_table.expenses.arn,
           "${aws_dynamodb_table.expenses.arn}/index/*",
           aws_dynamodb_table.receipts.arn,
-          "${aws_dynamodb_table.receipts.arn}/index/*"
+          "${aws_dynamodb_table.receipts.arn}/index/*",
+          aws_dynamodb_table.user_settings.arn
         ]
       },
       {
@@ -67,6 +68,13 @@ resource "aws_iam_role_policy" "lambda_policy" {
         Action    = var.enable_textract ? ["textract:DetectDocumentText", "textract:AnalyzeDocument"] : []
         Resource  = "*"
         Condition = var.enable_textract ? {} : null
+      },
+      {
+        Effect = "Allow"
+        Action = [
+          "lambda:InvokeFunction"
+        ]
+        Resource = "arn:aws:lambda:*:*:function:${var.project_name}-${var.environment}-expense-notifier"
       }
     ]
   })
@@ -110,6 +118,70 @@ resource "aws_iam_role_policy" "api_gateway_policy" {
         Resource = [
           aws_lambda_function.receipt_processor.arn
         ]
+      }
+    ]
+  })
+}
+
+# IAM Role for Notifier Lambda function
+resource "aws_iam_role" "notifier_lambda_role" {
+  name = "${var.project_name}-${var.environment}-notifier-lambda-role"
+
+  assume_role_policy = jsonencode({
+    Version = "2012-10-17"
+    Statement = [
+      {
+        Action = "sts:AssumeRole"
+        Effect = "Allow"
+        Principal = {
+          Service = "lambda.amazonaws.com"
+        }
+      }
+    ]
+  })
+
+  tags = {
+    Name = "${var.project_name}-${var.environment}-notifier-lambda-role"
+  }
+}
+
+# IAM Policy for Notifier Lambda
+resource "aws_iam_role_policy" "notifier_lambda_policy" {
+  name = "${var.project_name}-${var.environment}-notifier-lambda-policy"
+  role = aws_iam_role.notifier_lambda_role.id
+
+  policy = jsonencode({
+    Version = "2012-10-17"
+    Statement = [
+      {
+        Effect = "Allow"
+        Action = [
+          "logs:CreateLogGroup",
+          "logs:CreateLogStream",
+          "logs:PutLogEvents"
+        ]
+        Resource = "arn:aws:logs:*:*:*"
+      },
+      {
+        Effect = "Allow"
+        Action = [
+          "dynamodb:GetItem",
+          "dynamodb:Query",
+          "dynamodb:Scan"
+        ]
+        Resource = [
+          aws_dynamodb_table.expenses.arn,
+          "${aws_dynamodb_table.expenses.arn}/index/*",
+          aws_dynamodb_table.user_settings.arn
+        ]
+      },
+      {
+        Effect = "Allow"
+        Action = [
+          "ses:SendEmail",
+          "ses:SendRawEmail"
+        ]
+        Resource = "*"
       }
     ]
   })

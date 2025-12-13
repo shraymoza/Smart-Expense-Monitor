@@ -64,3 +64,9 @@ variable "cognito_callback_urls" {
   default     = ["http://localhost:3000", "http://localhost:3000/callback"]
 }
 
+variable "ses_sender_email" {
+  description = "SES sender email address (must be verified in SES)"
+  type        = string
+  default     = "shraym@proton.me"
+}
+
