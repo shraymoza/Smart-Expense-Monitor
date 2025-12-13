@@ -5,9 +5,9 @@
 // For now, we'll use the values directly from the deployment
 const awsConfig = {
   region: 'us-east-1',
-  userPoolId: 'us-east-1_1QQRZs2xC',
-  userPoolWebClientId: '2satntb5hl1fkr1rboa9ohsf7j',
-  apiGatewayUrl: 'https://pr53ispmk7.execute-api.us-east-1.amazonaws.com/dev',
+  userPoolId: 'us-east-1_U9qgkCgUa',
+  userPoolWebClientId: '2hoj90djbc1uvf5glcabprr7pq',
+  apiGatewayUrl: 'https://my2iasvlh6.execute-api.us-east-1.amazonaws.com/dev',
   s3BucketName: 'smart-expense-monitor-receipts'
 };
 
