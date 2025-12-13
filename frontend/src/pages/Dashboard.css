@@ -1,13 +1,16 @@
 .dashboard-container {
   min-height: 100vh;
-  background-color: #f5f5f5;
+  background: var(--bg-primary);
 }
 
 .dashboard-header {
-  background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
-  color: white;
-  padding: 20px 0;
-  box-shadow: 0 2px 10px rgba(0, 0, 0, 0.1);
+  background: var(--primary-gradient);
+  color: var(--text-inverse);
+  padding: 24px 0;
+  box-shadow: var(--shadow-lg);
+  position: sticky;
+  top: 0;
+  z-index: 100;
 }
 
 .header-content {
@@ -60,13 +63,14 @@
   position: absolute;
   top: calc(100% + 10px);
   right: 0;
-  background: white;
-  border-radius: 8px;
-  box-shadow: 0 4px 12px rgba(0, 0, 0, 0.15);
-  min-width: 150px;
+  background: var(--bg-secondary);
+  border-radius: var(--radius-md);
+  box-shadow: var(--shadow-xl);
+  min-width: 180px;
   overflow: hidden;
   z-index: 1000;
   animation: slideDown 0.2s ease;
+  border: 1px solid var(--border-light);
 }
 
 @keyframes slideDown {
@@ -82,16 +86,19 @@
 
 .dropdown-item {
   width: 100%;
-  padding: 12px 20px;
+  padding: 14px 20px;
   border: none;
-  background: white;
-  color: #333;
-  font-size: 14px;
+  background: var(--bg-secondary);
+  color: var(--text-primary);
+  font-size: 15px;
   font-weight: 500;
   cursor: pointer;
   text-align: left;
-  transition: background 0.2s ease;
-  border-bottom: 1px solid #f0f0f0;
+  transition: all 0.2s ease;
+  border-bottom: 1px solid var(--border-light);
+  display: flex;
+  align-items: center;
+  gap: 10px;
 }
 
 .dropdown-item:last-child {
@@ -99,12 +106,13 @@
 }
 
 .dropdown-item:hover {
-  background: #f8f9fa;
-  color: #667eea;
+  background: var(--bg-hover);
+  color: var(--accent-blue);
+  padding-left: 24px;
 }
 
 .dropdown-item:active {
-  background: #e9ecef;
+  background: var(--bg-tertiary);
 }
 
 .dashboard-main {
@@ -118,26 +126,33 @@
 }
 
 .welcome-section {
-  background: white;
-  border-radius: 12px;
-  padding: 30px;
-  margin-bottom: 30px;
-  box-shadow: 0 2px 10px rgba(0, 0, 0, 0.05);
+  background: var(--bg-secondary);
+  border-radius: var(--radius-lg);
+  padding: var(--spacing-2xl);
+  margin-bottom: var(--spacing-xl);
+  box-shadow: var(--shadow-md);
   text-align: center;
+  border: 1px solid var(--border-light);
+  background: linear-gradient(135deg, #ffffff 0%, #f8f9ff 100%);
 }
 
 .welcome-section h2 {
-  color: #333;
-  font-size: 28px;
-  margin-bottom: 10px;
+  color: var(--text-primary);
+  font-size: 32px;
+  margin-bottom: var(--spacing-md);
   font-weight: 700;
   text-align: center;
+  background: var(--primary-gradient);
+  -webkit-background-clip: text;
+  -webkit-text-fill-color: transparent;
+  background-clip: text;
 }
 
 .welcome-section p {
-  color: #666;
-  font-size: 16px;
+  color: var(--text-secondary);
+  font-size: 18px;
   text-align: center;
+  font-weight: 400;
 }
 
 .dashboard-cards {
@@ -148,92 +163,148 @@
 }
 
 .dashboard-card {
-  background: white;
-  border-radius: 12px;
-  padding: 30px;
-  box-shadow: 0 2px 10px rgba(0, 0, 0, 0.05);
-  transition: transform 0.3s ease, box-shadow 0.3s ease;
+  background: var(--bg-secondary);
+  border-radius: var(--radius-lg);
+  padding: var(--spacing-xl);
+  box-shadow: var(--shadow-md);
+  transition: all 0.3s cubic-bezier(0.4, 0, 0.2, 1);
   display: flex;
   flex-direction: column;
   align-items: center;
   text-align: center;
+  border: 1px solid var(--border-light);
+  position: relative;
+  overflow: hidden;
+}
+
+.dashboard-card::before {
+  content: '';
+  position: absolute;
+  top: 0;
+  left: 0;
+  right: 0;
+  height: 4px;
+  background: var(--primary-gradient);
+  transform: scaleX(0);
+  transition: transform 0.3s ease;
 }
 
 .dashboard-card:hover {
-  transform: translateY(-5px);
-  box-shadow: 0 5px 20px rgba(0, 0, 0, 0.1);
+  transform: translateY(-8px);
+  box-shadow: var(--shadow-colored);
+  border-color: var(--border-accent);
+}
+
+.dashboard-card:hover::before {
+  transform: scaleX(1);
 }
 
 .dashboard-card h3 {
-  color: #333;
-  font-size: 20px;
-  margin-bottom: 10px;
-  font-weight: 600;
+  color: var(--text-primary);
+  font-size: 22px;
+  margin-bottom: var(--spacing-md);
+  font-weight: 700;
   text-align: center;
 }
 
 .dashboard-card p {
-  color: #666;
-  font-size: 14px;
-  margin-bottom: 20px;
+  color: var(--text-secondary);
+  font-size: 15px;
+  margin-bottom: var(--spacing-lg);
   text-align: center;
+  line-height: 1.6;
 }
 
 .card-button {
-  background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
-  color: white;
+  background: var(--primary-gradient);
+  color: var(--text-inverse);
   border: none;
-  padding: 12px 24px;
-  border-radius: 8px;
-  font-size: 14px;
+  padding: 14px 32px;
+  border-radius: var(--radius-md);
+  font-size: 15px;
   font-weight: 600;
   cursor: pointer;
-  transition: transform 0.2s ease, box-shadow 0.2s ease;
+  transition: all 0.3s cubic-bezier(0.4, 0, 0.2, 1);
+  box-shadow: var(--shadow-sm);
+  position: relative;
+  overflow: hidden;
+}
+
+.card-button::before {
+  content: '';
+  position: absolute;
+  top: 50%;
+  left: 50%;
+  width: 0;
+  height: 0;
+  border-radius: 50%;
+  background: rgba(255, 255, 255, 0.2);
+  transform: translate(-50%, -50%);
+  transition: width 0.6s, height 0.6s;
 }
 
 .card-button:hover {
-  transform: translateY(-2px);
-  box-shadow: 0 5px 15px rgba(102, 126, 234, 0.4);
+  transform: translateY(-3px);
+  box-shadow: var(--shadow-colored);
+}
+
+.card-button:hover::before {
+  width: 300px;
+  height: 300px;
 }
 
 .stats-section {
-  background: white;
-  border-radius: 12px;
-  padding: 30px;
-  box-shadow: 0 2px 10px rgba(0, 0, 0, 0.05);
+  background: var(--bg-secondary);
+  border-radius: var(--radius-lg);
+  padding: var(--spacing-xl);
+  box-shadow: var(--shadow-md);
+  border: 1px solid var(--border-light);
 }
 
 .stats-section h3 {
-  color: #333;
-  font-size: 22px;
-  margin-bottom: 20px;
-  font-weight: 600;
+  color: var(--text-primary);
+  font-size: 24px;
+  margin-bottom: var(--spacing-lg);
+  font-weight: 700;
 }
 
 .stats-grid {
   display: grid;
-  grid-template-columns: repeat(auto-fit, minmax(200px, 1fr));
-  gap: 20px;
+  grid-template-columns: repeat(auto-fit, minmax(220px, 1fr));
+  gap: var(--spacing-lg);
 }
 
 .stat-item {
   display: flex;
   flex-direction: column;
-  padding: 20px;
-  background: #f8f9fa;
-  border-radius: 8px;
+  padding: var(--spacing-lg);
+  background: linear-gradient(135deg, #f8f9ff 0%, #ffffff 100%);
+  border-radius: var(--radius-md);
+  border: 1px solid var(--border-light);
+  transition: all 0.3s ease;
+}
+
+.stat-item:hover {
+  transform: translateY(-4px);
+  box-shadow: var(--shadow-md);
+  border-color: var(--border-accent);
 }
 
 .stat-label {
-  color: #666;
+  color: var(--text-secondary);
   font-size: 14px;
-  margin-bottom: 8px;
-  font-weight: 500;
+  margin-bottom: var(--spacing-sm);
+  font-weight: 600;
+  text-transform: uppercase;
+  letter-spacing: 0.5px;
 }
 
 .stat-value {
-  color: #667eea;
-  font-size: 24px;
+  background: var(--primary-gradient);
+  -webkit-background-clip: text;
+  -webkit-text-fill-color: transparent;
+  background-clip: text;
+  font-size: 28px;
   font-weight: 700;
 }
 
