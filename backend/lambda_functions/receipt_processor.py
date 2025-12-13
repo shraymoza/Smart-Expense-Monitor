@@ -151,7 +151,10 @@ def handle_api_event(event):
             return upload_receipt(event)
     
     elif http_method == 'PUT':
-        if '/settings' in path or '/settings' in resource:
+        if '/expenses' in path or '/expenses' in resource:
+            if path_parameters.get('id'):
+                return update_expense(event, path_parameters['id'])
+        elif '/settings' in path or '/settings' in resource:
             return update_user_settings(event)
     
     # Default 404
@@ -739,6 +742,122 @@ def get_expense(event, expenseId):
         }
     except Exception as e:
         print(f"Error fetching expense: {str(e)}")
+        return {
+            'statusCode': 500,
+            'headers': {
+                'Content-Type': 'application/json',
+                'Access-Control-Allow-Origin': '*'
+            },
+            'body': json.dumps({'message': str(e)})
+        }
+
+
+def update_expense(event, expenseId):
+    """Update an expense (currently supports category update)"""
+    try:
+        request_context = event.get('requestContext', {})
+        authorizer = request_context.get('authorizer', {})
+        claims = authorizer.get('claims', {})
+        userId = claims.get('sub') or claims.get('cognito:username')
+        
+        if not userId:
+            return {
+                'statusCode': 401,
+                'headers': {
+                    'Content-Type': 'application/json',
+                    'Access-Control-Allow-Origin': '*'
+                },
+                'body': json.dumps({'message': 'User ID not found in request'})
+            }
+        
+        # Parse request body
+        body = json.loads(event.get('body', '{}'))
+        new_category = body.get('category')
+        
+        if not new_category:
+            return {
+                'statusCode': 400,
+                'headers': {
+                    'Content-Type': 'application/json',
+                    'Access-Control-Allow-Origin': '*'
+                },
+                'body': json.dumps({'message': 'Category is required'})
+            }
+        
+        # Validate category (optional - you can add more validation)
+        valid_categories = [
+            'Groceries', 'Food & Drink', 'Pharmacy', 'Home Improvement',
+            'Electronics', 'Gas & Fuel', 'Shopping', 'Discount Store', 'Other'
+        ]
+        if new_category not in valid_categories:
+            return {
+                'statusCode': 400,
+                'headers': {
+                    'Content-Type': 'application/json',
+                    'Access-Control-Allow-Origin': '*'
+                },
+                'body': json.dumps({'message': f'Invalid category. Must be one of: {", ".join(valid_categories)}'})
+            }
+        
+        # Check if expense exists and belongs to user
+        response = expenses_table.get_item(
+            Key={
+                'userId': userId,
+                'expenseId': expenseId
+            }
+        )
+        
+        if 'Item' not in response:
+            return {
+                'statusCode': 404,
+                'headers': {
+                    'Content-Type': 'application/json',
+                    'Access-Control-Allow-Origin': '*'
+                },
+                'body': json.dumps({'message': 'Expense not found'})
+            }
+        
+        # Update the category
+        expenses_table.update_item(
+            Key={
+                'userId': userId,
+                'expenseId': expenseId
+            },
+            UpdateExpression='SET #cat = :category',
+            ExpressionAttributeNames={
+                '#cat': 'category'
+            },
+            ExpressionAttributeValues={
+                ':category': new_category
+            },
+            ReturnValues='ALL_NEW'
+        )
+        
+        print(f"Updated category for expense {expenseId} to {new_category}")
+        
+        return {
+            'statusCode': 200,
+            'headers': {
+                'Content-Type': 'application/json',
+                'Access-Control-Allow-Origin': '*'
+            },
+            'body': json.dumps({
+                'message': 'Expense category updated successfully',
+                'expenseId': expenseId,
+                'category': new_category
+            })
+        }
+    except json.JSONDecodeError:
+        return {
+            'statusCode': 400,
+            'headers': {
+                'Content-Type': 'application/json',
+                'Access-Control-Allow-Origin': '*'
+            },
+            'body': json.dumps({'message': 'Invalid JSON in request body'})
+        }
+    except Exception as e:
+        print(f"Error updating expense: {str(e)}")
         return {
             'statusCode': 500,
             'headers': {

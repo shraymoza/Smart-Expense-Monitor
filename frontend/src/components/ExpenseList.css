@@ -13,6 +13,35 @@
   justify-content: space-between;
   align-items: center;
   margin-bottom: 20px;
+  flex-wrap: wrap;
+  gap: 15px;
+}
+
+.header-actions {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+}
+
+.category-filter-select {
+  padding: 8px 12px;
+  border: 1px solid #ddd;
+  border-radius: 5px;
+  font-size: 0.9em;
+  background: white;
+  color: #333;
+  cursor: pointer;
+  min-width: 150px;
+}
+
+.category-filter-select:hover {
+  border-color: #2575fc;
+}
+
+.category-filter-select:focus {
+  outline: none;
+  border-color: #2575fc;
+  box-shadow: 0 0 0 2px rgba(37, 117, 252, 0.2);
 }
 
 .expense-list-header h3 {
@@ -325,5 +354,92 @@
   font-size: 0.85em;
   color: #999;
   font-style: italic;
+}
+
+/* Category Edit Styles */
+.category-display {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+}
+
+.edit-category-btn {
+  background: none;
+  border: none;
+  cursor: pointer;
+  font-size: 1em;
+  padding: 4px 8px;
+  opacity: 0.6;
+  transition: opacity 0.2s ease;
+}
+
+.edit-category-btn:hover {
+  opacity: 1;
+}
+
+.category-edit-container {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  flex-wrap: wrap;
+}
+
+.category-select {
+  padding: 6px 12px;
+  border: 1px solid #ddd;
+  border-radius: 5px;
+  font-size: 0.95em;
+  background: white;
+  color: #333;
+  cursor: pointer;
+  min-width: 150px;
+}
+
+.category-select:disabled {
+  opacity: 0.6;
+  cursor: not-allowed;
+}
+
+.category-edit-buttons {
+  display: flex;
+  gap: 8px;
+}
+
+.save-category-btn,
+.cancel-category-btn {
+  padding: 6px 12px;
+  border: none;
+  border-radius: 5px;
+  cursor: pointer;
+  font-size: 0.9em;
+  transition: all 0.2s ease;
+}
+
+.save-category-btn {
+  background: #2575fc;
+  color: white;
+}
+
+.save-category-btn:hover:not(:disabled) {
+  background: #6a11cb;
+}
+
+.save-category-btn:disabled {
+  opacity: 0.6;
+  cursor: not-allowed;
+}
+
+.cancel-category-btn {
+  background: #e0e0e0;
+  color: #333;
+}
+
+.cancel-category-btn:hover:not(:disabled) {
+  background: #d0d0d0;
+}
+
+.cancel-category-btn:disabled {
+  opacity: 0.6;
+  cursor: not-allowed;
 }
 

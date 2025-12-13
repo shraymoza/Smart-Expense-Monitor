@@ -1,5 +1,5 @@
 import React, { useEffect, useState } from 'react';
-import { getExpenses } from '../services/api';
+import { getExpenses, updateExpenseCategory } from '../services/api';
 import './ExpenseList.css';
 
 const ExpenseList = () => {
@@ -7,6 +7,22 @@ const ExpenseList = () => {
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState('');
   const [expandedId, setExpandedId] = useState(null);
+  const [editingCategory, setEditingCategory] = useState(null);
+  const [newCategory, setNewCategory] = useState('');
+  const [updating, setUpdating] = useState(false);
+  const [selectedCategoryFilter, setSelectedCategoryFilter] = useState('All');
+  
+  const categories = [
+    'Groceries',
+    'Food & Drink',
+    'Pharmacy',
+    'Home Improvement',
+    'Electronics',
+    'Gas & Fuel',
+    'Shopping',
+    'Discount Store',
+    'Other'
+  ];
 
   useEffect(() => {
     loadExpenses();
@@ -49,6 +65,44 @@ const ExpenseList = () => {
     }).format(amount || 0);
   };
 
+  const handleCategoryEdit = (expense) => {
+    setEditingCategory(expense.expenseId);
+    setNewCategory(expense.category || 'Other');
+  };
+
+  const handleCategoryCancel = () => {
+    setEditingCategory(null);
+    setNewCategory('');
+  };
+
+  const handleCategorySave = async (expenseId) => {
+    if (!newCategory) {
+      setError('Please select a category');
+      return;
+    }
+
+    try {
+      setUpdating(true);
+      setError('');
+      await updateExpenseCategory(expenseId, newCategory);
+      
+      // Update local state
+      setExpenses(expenses.map(exp => 
+        exp.expenseId === expenseId 
+          ? { ...exp, category: newCategory }
+          : exp
+      ));
+      
+      setEditingCategory(null);
+      setNewCategory('');
+    } catch (err) {
+      console.error('Error updating category:', err);
+      setError(err.message || 'Failed to update category');
+    } finally {
+      setUpdating(false);
+    }
+  };
+
   if (loading) {
     return (
       <div className="expense-list-container">
@@ -66,6 +120,11 @@ const ExpenseList = () => {
     );
   }
 
+  // Filter expenses by category
+  const filteredExpenses = selectedCategoryFilter === 'All'
+    ? expenses
+    : expenses.filter(expense => (expense.category || 'Other') === selectedCategoryFilter);
+
   if (expenses.length === 0) {
     return (
       <div className="expense-list-container">
@@ -80,11 +139,29 @@ const ExpenseList = () => {
     <div className="expense-list-container">
       <div className="expense-list-header">
         <h3>Expense History</h3>
-        <button onClick={loadExpenses} className="refresh-button">Refresh</button>
+        <div className="header-actions">
+          <select
+            value={selectedCategoryFilter}
+            onChange={(e) => setSelectedCategoryFilter(e.target.value)}
+            className="category-filter-select"
+          >
+            <option value="All">All Categories</option>
+            {categories.map(cat => (
+              <option key={cat} value={cat}>{cat}</option>
+            ))}
+          </select>
+          <button onClick={loadExpenses} className="refresh-button">Refresh</button>
+        </div>
       </div>
       
+      {filteredExpenses.length === 0 && expenses.length > 0 && (
+        <div className="empty-state">
+          <p>No expenses found in the "{selectedCategoryFilter}" category.</p>
+        </div>
+      )}
+      
       <div className="expense-list">
-        {expenses.map((expense) => {
+        {filteredExpenses.map((expense) => {
           const isExpanded = expandedId === expense.expenseId;
           return (
             <div 
@@ -122,7 +199,47 @@ const ExpenseList = () => {
                     </div>
                     <div className="detail-row">
                       <span className="detail-label">Category:</span>
-                      <span className="detail-value">{expense.category || 'Other'}</span>
+                      {editingCategory === expense.expenseId ? (
+                        <div className="category-edit-container">
+                          <select
+                            value={newCategory}
+                            onChange={(e) => setNewCategory(e.target.value)}
+                            className="category-select"
+                            disabled={updating}
+                          >
+                            {categories.map(cat => (
+                              <option key={cat} value={cat}>{cat}</option>
+                            ))}
+                          </select>
+                          <div className="category-edit-buttons">
+                            <button
+                              onClick={() => handleCategorySave(expense.expenseId)}
+                              className="save-category-btn"
+                              disabled={updating}
+                            >
+                              {updating ? 'Saving...' : 'Save'}
+                            </button>
+                            <button
+                              onClick={handleCategoryCancel}
+                              className="cancel-category-btn"
+                              disabled={updating}
+                            >
+                              Cancel
+                            </button>
+                          </div>
+                        </div>
+                      ) : (
+                        <div className="category-display">
+                          <span className="detail-value">{expense.category || 'Other'}</span>
+                          <button
+                            onClick={() => handleCategoryEdit(expense)}
+                            className="edit-category-btn"
+                            title="Edit category"
+                          >
+                            ✏️
+                          </button>
+                        </div>
+                      )}
                     </div>
                     <div className="detail-row">
                       <span className="detail-label">Total Amount:</span>

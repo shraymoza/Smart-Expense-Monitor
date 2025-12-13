@@ -223,3 +223,16 @@ export async function updateUserSettings(settings) {
   }
 }
 
+/**
+ * Update expense category
+ */
+export async function updateExpenseCategory(expenseId, category) {
+  try {
+    console.log('Updating expense category...', { expenseId, category });
+    return await apiRequest(`/expenses/${expenseId}`, 'PUT', { category });
+  } catch (error) {
+    console.error('Error updating expense category:', error);
+    throw error;
+  }
+}
+
