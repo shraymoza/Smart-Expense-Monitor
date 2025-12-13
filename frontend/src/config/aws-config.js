@@ -1,14 +1,13 @@
 // AWS Configuration for Smart Expense Monitor
-// This file loads configuration from Terraform outputs
+// This file loads configuration from environment variables (for Amplify) or uses defaults (for local dev)
+// Environment variables are set in Amplify Console or .env file
 
-// Import Terraform outputs (you may need to adjust the path)
-// For now, we'll use the values directly from the deployment
 const awsConfig = {
-  region: 'us-east-1',
-  userPoolId: 'us-east-1_U9qgkCgUa',
-  userPoolWebClientId: '2hoj90djbc1uvf5glcabprr7pq',
-  apiGatewayUrl: 'https://my2iasvlh6.execute-api.us-east-1.amazonaws.com/dev',
-  s3BucketName: 'smart-expense-monitor-receipts'
+  region: process.env.REACT_APP_AWS_REGION || 'us-east-1',
+  userPoolId: process.env.REACT_APP_COGNITO_USER_POOL_ID || 'us-east-1_U9qgkCgUa',
+  userPoolWebClientId: process.env.REACT_APP_COGNITO_CLIENT_ID || '2hoj90djbc1uvf5glcabprr7pq',
+  apiGatewayUrl: process.env.REACT_APP_API_GATEWAY_URL || 'https://my2iasvlh6.execute-api.us-east-1.amazonaws.com/dev',
+  s3BucketName: process.env.REACT_APP_S3_BUCKET_NAME || 'smart-expense-monitor-receipts'
 };
 
 // Cognito configuration for AWS Amplify v5
@@ -34,15 +33,25 @@ export const cognitoConfig = {
   }
 };
 
-// For localhost development - works with any port
+// For localhost development and Amplify - works with any port/domain
 export const getCallbackUrls = () => {
-  const port = window.location.port || '3000';
   const origin = window.location.origin;
+  const port = window.location.port;
+  
+  // For Amplify (production), use the actual domain
+  if (origin.includes('amplifyapp.com') || origin.includes('amplifyapp')) {
+    return [
+      origin,
+      `${origin}/callback`
+    ];
+  }
+  
+  // For localhost development
   return [
-    `${origin}`,
+    origin,
     `${origin}/callback`,
-    `http://localhost:${port}`,
-    `http://localhost:${port}/callback`
+    `http://localhost:${port || '3000'}`,
+    `http://localhost:${port || '3000'}/callback`
   ];
 };
 
@@ -62,4 +71,3 @@ export const s3Config = {
 };
 
 export default awsConfig;
-

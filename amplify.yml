@@ -1,0 +1,22 @@
+# AWS Amplify build configuration
+# This file is for deploying from the repository root
+# If deploying only the frontend folder, use frontend/amplify.yml
+
+version: 1
+frontend:
+  phases:
+    preBuild:
+      commands:
+        - cd frontend
+        - npm ci
+    build:
+      commands:
+        - npm run build
+  artifacts:
+    baseDirectory: frontend/build
+    files:
+      - '**/*'
+  cache:
+    paths:
+      - frontend/node_modules/**/*
+
