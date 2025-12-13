@@ -443,3 +443,163 @@
   cursor: not-allowed;
 }
 
+/* Items Edit Styles */
+.items-section-header {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  margin-bottom: 15px;
+}
+
+.items-section-header h4 {
+  margin: 0;
+}
+
+.items-edit-actions {
+  display: flex;
+  gap: 8px;
+  align-items: center;
+}
+
+.edit-items-btn {
+  padding: 6px 12px;
+  background: #2575fc;
+  color: white;
+  border: none;
+  border-radius: 5px;
+  cursor: pointer;
+  font-size: 0.9em;
+  transition: background 0.2s ease;
+}
+
+.edit-items-btn:hover {
+  background: #6a11cb;
+}
+
+.add-item-btn,
+.save-items-btn,
+.cancel-items-btn {
+  padding: 6px 12px;
+  border: none;
+  border-radius: 5px;
+  cursor: pointer;
+  font-size: 0.9em;
+  transition: all 0.2s ease;
+}
+
+.add-item-btn {
+  background: #28a745;
+  color: white;
+}
+
+.add-item-btn:hover:not(:disabled) {
+  background: #218838;
+}
+
+.save-items-btn {
+  background: #2575fc;
+  color: white;
+}
+
+.save-items-btn:hover:not(:disabled) {
+  background: #6a11cb;
+}
+
+.cancel-items-btn {
+  background: #e0e0e0;
+  color: #333;
+}
+
+.cancel-items-btn:hover:not(:disabled) {
+  background: #d0d0d0;
+}
+
+.add-item-btn:disabled,
+.save-items-btn:disabled,
+.cancel-items-btn:disabled {
+  opacity: 0.6;
+  cursor: not-allowed;
+}
+
+.items-edit-list {
+  background: white;
+  border-radius: 8px;
+  overflow: hidden;
+  border: 1px solid #e0e0e0;
+}
+
+.item-row-editing {
+  display: grid;
+  grid-template-columns: 2fr 0.5fr 1fr 1fr 0.5fr;
+  gap: 10px;
+  padding: 12px 15px;
+  border-bottom: 1px solid #f0f0f0;
+  align-items: center;
+}
+
+.item-row-editing:last-of-type {
+  border-bottom: none;
+}
+
+.item-input {
+  padding: 6px 8px;
+  border: 1px solid #ddd;
+  border-radius: 4px;
+  font-size: 0.9em;
+  font-family: inherit;
+}
+
+.item-input:focus {
+  outline: none;
+  border-color: #2575fc;
+  box-shadow: 0 0 0 2px rgba(37, 117, 252, 0.2);
+}
+
+.item-name-input {
+  grid-column: 1;
+}
+
+.item-qty-input {
+  grid-column: 2;
+  text-align: center;
+}
+
+.item-price-input {
+  grid-column: 3;
+  text-align: right;
+}
+
+.item-row-editing .item-subtotal {
+  grid-column: 4;
+  text-align: right;
+  color: #2575fc;
+  font-weight: 600;
+  font-size: 0.95em;
+}
+
+.item-actions-header {
+  grid-column: 5;
+  text-align: center;
+}
+
+.remove-item-btn {
+  grid-column: 5;
+  background: none;
+  border: none;
+  cursor: pointer;
+  font-size: 1em;
+  padding: 4px 8px;
+  opacity: 0.7;
+  transition: opacity 0.2s ease;
+  text-align: center;
+}
+
+.remove-item-btn:hover:not(:disabled) {
+  opacity: 1;
+}
+
+.remove-item-btn:disabled {
+  opacity: 0.4;
+  cursor: not-allowed;
+}
+

@@ -236,3 +236,30 @@ export async function updateExpenseCategory(expenseId, category) {
   }
 }
 
+/**
+ * Update expense items
+ */
+export async function updateExpenseItems(expenseId, items) {
+  try {
+    console.log('Updating expense items...', { expenseId, items });
+    const response = await apiRequest(`/expenses/${expenseId}`, 'PUT', { items });
+    return response;
+  } catch (error) {
+    console.error('Error updating expense items:', error);
+    throw error;
+  }
+}
+
+/**
+ * Update expense (supports both category and items)
+ */
+export async function updateExpense(expenseId, updates) {
+  try {
+    console.log('Updating expense...', { expenseId, updates });
+    return await apiRequest(`/expenses/${expenseId}`, 'PUT', updates);
+  } catch (error) {
+    console.error('Error updating expense:', error);
+    throw error;
+  }
+}
+

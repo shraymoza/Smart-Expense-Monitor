@@ -753,7 +753,7 @@ def get_expense(event, expenseId):
 
 
 def update_expense(event, expenseId):
-    """Update an expense (currently supports category update)"""
+    """Update an expense (supports category and items updates)"""
     try:
         request_context = event.get('requestContext', {})
         authorizer = request_context.get('authorizer', {})
@@ -773,30 +773,17 @@ def update_expense(event, expenseId):
         # Parse request body
         body = json.loads(event.get('body', '{}'))
         new_category = body.get('category')
+        new_items = body.get('items')
         
-        if not new_category:
+        # At least one field must be provided
+        if not new_category and new_items is None:
             return {
                 'statusCode': 400,
                 'headers': {
                     'Content-Type': 'application/json',
                     'Access-Control-Allow-Origin': '*'
                 },
-                'body': json.dumps({'message': 'Category is required'})
-            }
-        
-        # Validate category (optional - you can add more validation)
-        valid_categories = [
-            'Groceries', 'Food & Drink', 'Pharmacy', 'Home Improvement',
-            'Electronics', 'Gas & Fuel', 'Shopping', 'Discount Store', 'Other'
-        ]
-        if new_category not in valid_categories:
-            return {
-                'statusCode': 400,
-                'headers': {
-                    'Content-Type': 'application/json',
-                    'Access-Control-Allow-Origin': '*'
-                },
-                'body': json.dumps({'message': f'Invalid category. Must be one of: {", ".join(valid_categories)}'})
+                'body': json.dumps({'message': 'Either category or items must be provided'})
             }
         
         # Check if expense exists and belongs to user
@@ -817,23 +804,154 @@ def update_expense(event, expenseId):
                 'body': json.dumps({'message': 'Expense not found'})
             }
         
-        # Update the category
+        expense = response['Item']
+        update_expressions = []
+        expression_attribute_names = {}
+        expression_attribute_values = {}
+        
+        # Handle category update
+        if new_category:
+            # Validate category
+            valid_categories = [
+                'Groceries', 'Food & Drink', 'Pharmacy', 'Home Improvement',
+                'Electronics', 'Gas & Fuel', 'Shopping', 'Discount Store', 'Other'
+            ]
+            if new_category not in valid_categories:
+                return {
+                    'statusCode': 400,
+                    'headers': {
+                        'Content-Type': 'application/json',
+                        'Access-Control-Allow-Origin': '*'
+                    },
+                    'body': json.dumps({'message': f'Invalid category. Must be one of: {", ".join(valid_categories)}'})
+                }
+            
+            update_expressions.append('#cat = :category')
+            expression_attribute_names['#cat'] = 'category'
+            expression_attribute_values[':category'] = new_category
+        
+        # Handle items update
+        if new_items is not None:
+            # Validate items structure
+            if not isinstance(new_items, list):
+                return {
+                    'statusCode': 400,
+                    'headers': {
+                        'Content-Type': 'application/json',
+                        'Access-Control-Allow-Origin': '*'
+                    },
+                    'body': json.dumps({'message': 'Items must be an array'})
+                }
+            
+            # Process and validate each item
+            processed_items = []
+            total_amount = Decimal('0.00')
+            
+            for item in new_items:
+                if not isinstance(item, dict):
+                    return {
+                        'statusCode': 400,
+                        'headers': {
+                            'Content-Type': 'application/json',
+                            'Access-Control-Allow-Origin': '*'
+                        },
+                        'body': json.dumps({'message': 'Each item must be an object'})
+                    }
+                
+                name = item.get('name', '').strip()
+                quantity = float(item.get('quantity', 1))
+                price = float(item.get('price', 0))
+                
+                if not name:
+                    return {
+                        'statusCode': 400,
+                        'headers': {
+                            'Content-Type': 'application/json',
+                            'Access-Control-Allow-Origin': '*'
+                        },
+                        'body': json.dumps({'message': 'Item name is required'})
+                    }
+                
+                if quantity <= 0:
+                    return {
+                        'statusCode': 400,
+                        'headers': {
+                            'Content-Type': 'application/json',
+                            'Access-Control-Allow-Origin': '*'
+                        },
+                        'body': json.dumps({'message': 'Item quantity must be greater than 0'})
+                    }
+                
+                if price < 0:
+                    return {
+                        'statusCode': 400,
+                        'headers': {
+                            'Content-Type': 'application/json',
+                            'Access-Control-Allow-Origin': '*'
+                        },
+                        'body': json.dumps({'message': 'Item price cannot be negative'})
+                    }
+                
+                subtotal = Decimal(str(quantity * price)).quantize(Decimal('0.01'))
+                total_amount += subtotal
+                
+                processed_items.append({
+                    'name': name,
+                    'quantity': Decimal(str(quantity)),
+                    'price': Decimal(str(price)),
+                    'subtotal': subtotal
+                })
+            
+            # Update items and recalculate total amount
+            update_expressions.append('#items = :items')
+            update_expressions.append('#amount = :amount')
+            expression_attribute_names['#items'] = 'items'
+            expression_attribute_names['#amount'] = 'amount'
+            expression_attribute_values[':items'] = processed_items
+            expression_attribute_values[':amount'] = total_amount
+        
+        # Perform the update
+        update_expression = 'SET ' + ', '.join(update_expressions)
+        
         expenses_table.update_item(
             Key={
                 'userId': userId,
                 'expenseId': expenseId
             },
-            UpdateExpression='SET #cat = :category',
-            ExpressionAttributeNames={
-                '#cat': 'category'
-            },
-            ExpressionAttributeValues={
-                ':category': new_category
-            },
+            UpdateExpression=update_expression,
+            ExpressionAttributeNames=expression_attribute_names,
+            ExpressionAttributeValues=expression_attribute_values,
             ReturnValues='ALL_NEW'
         )
         
-        print(f"Updated category for expense {expenseId} to {new_category}")
+        # Convert response for JSON serialization
+        updated_expense = expenses_table.get_item(
+            Key={
+                'userId': userId,
+                'expenseId': expenseId
+            }
+        )['Item']
+        
+        # Convert Decimal to float for JSON
+        if 'amount' in updated_expense and isinstance(updated_expense['amount'], Decimal):
+            updated_expense['amount'] = float(updated_expense['amount'])
+        
+        if 'items' in updated_expense and isinstance(updated_expense['items'], list):
+            for item in updated_expense['items']:
+                if 'price' in item and isinstance(item['price'], Decimal):
+                    item['price'] = float(item['price'])
+                if 'quantity' in item and isinstance(item['quantity'], Decimal):
+                    item['quantity'] = float(item['quantity'])
+                if 'subtotal' in item and isinstance(item['subtotal'], Decimal):
+                    item['subtotal'] = float(item['subtotal'])
+        
+        update_messages = []
+        if new_category:
+            update_messages.append(f'category updated to {new_category}')
+        if new_items is not None:
+            update_messages.append(f'{len(processed_items)} items updated')
+        
+        print(f"Updated expense {expenseId}: {', '.join(update_messages)}")
         
         return {
             'statusCode': 200,
@@ -842,10 +960,10 @@ def update_expense(event, expenseId):
                 'Access-Control-Allow-Origin': '*'
             },
             'body': json.dumps({
-                'message': 'Expense category updated successfully',
+                'message': 'Expense updated successfully',
                 'expenseId': expenseId,
-                'category': new_category
-            })
+                'expense': updated_expense
+            }, default=decimal_default)
         }
     except json.JSONDecodeError:
         return {

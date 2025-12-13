@@ -1,5 +1,5 @@
 import React, { useEffect, useState } from 'react';
-import { getExpenses, updateExpenseCategory } from '../services/api';
+import { getExpenses, updateExpenseCategory, updateExpenseItems } from '../services/api';
 import './ExpenseList.css';
 
 const ExpenseList = () => {
@@ -11,6 +11,9 @@ const ExpenseList = () => {
   const [newCategory, setNewCategory] = useState('');
   const [updating, setUpdating] = useState(false);
   const [selectedCategoryFilter, setSelectedCategoryFilter] = useState('All');
+  const [editingItems, setEditingItems] = useState(null); // expenseId being edited
+  const [tempItems, setTempItems] = useState([]); // temporary items while editing
+  const [updatingItems, setUpdatingItems] = useState(false);
   
   const categories = [
     'Groceries',
@@ -101,6 +104,116 @@ const ExpenseList = () => {
     } finally {
       setUpdating(false);
     }
+  };
+
+  const handleItemsEdit = (expense) => {
+    // Initialize temp items with current items or empty array
+    const currentItems = expense.items && expense.items.length > 0 
+      ? expense.items.map(item => ({
+          name: item.name || '',
+          quantity: item.quantity || 1,
+          price: item.price || 0
+        }))
+      : [];
+    setTempItems(currentItems);
+    setEditingItems(expense.expenseId);
+  };
+
+  const handleItemsCancel = () => {
+    setEditingItems(null);
+    setTempItems([]);
+  };
+
+  const handleItemChange = (index, field, value) => {
+    const updatedItems = [...tempItems];
+    updatedItems[index] = {
+      ...updatedItems[index],
+      [field]: field === 'name' ? value : parseFloat(value) || 0
+    };
+    
+    // Recalculate subtotal
+    if (field === 'quantity' || field === 'price') {
+      updatedItems[index].subtotal = (updatedItems[index].quantity || 0) * (updatedItems[index].price || 0);
+    }
+    
+    setTempItems(updatedItems);
+  };
+
+  const handleAddItem = () => {
+    setTempItems([...tempItems, { name: '', quantity: 1, price: 0, subtotal: 0 }]);
+  };
+
+  const handleRemoveItem = (index) => {
+    const updatedItems = tempItems.filter((_, i) => i !== index);
+    setTempItems(updatedItems);
+  };
+
+  const handleItemsSave = async (expenseId) => {
+    // Validate items
+    for (let i = 0; i < tempItems.length; i++) {
+      const item = tempItems[i];
+      if (!item.name || item.name.trim() === '') {
+        setError(`Item ${i + 1}: Name is required`);
+        return;
+      }
+      if (item.quantity <= 0) {
+        setError(`Item ${i + 1}: Quantity must be greater than 0`);
+        return;
+      }
+      if (item.price < 0) {
+        setError(`Item ${i + 1}: Price cannot be negative`);
+        return;
+      }
+    }
+
+    try {
+      setUpdatingItems(true);
+      setError('');
+      
+      // Calculate subtotals for all items
+      const processedItems = tempItems.map(item => ({
+        name: item.name.trim(),
+        quantity: item.quantity || 1,
+        price: item.price || 0,
+        subtotal: (item.quantity || 1) * (item.price || 0)
+      }));
+      
+      const response = await updateExpenseItems(expenseId, processedItems);
+      
+      // Update local state with response
+      if (response.expense) {
+        setExpenses(expenses.map(exp => 
+          exp.expenseId === expenseId 
+            ? response.expense
+            : exp
+        ));
+      } else {
+        // Fallback: update manually
+        const totalAmount = processedItems.reduce((sum, item) => sum + item.subtotal, 0);
+        setExpenses(expenses.map(exp => 
+          exp.expenseId === expenseId 
+            ? { 
+                ...exp, 
+                items: processedItems,
+                amount: totalAmount
+              }
+            : exp
+        ));
+      }
+      
+      setEditingItems(null);
+      setTempItems([]);
+    } catch (err) {
+      console.error('Error updating items:', err);
+      setError(err.message || 'Failed to update items');
+    } finally {
+      setUpdatingItems(false);
+    }
+  };
+
+  const calculateItemsTotal = (items) => {
+    if (!items || items.length === 0) return 0;
+    return items.reduce((sum, item) => sum + (item.subtotal || (item.quantity || 1) * (item.price || 0)), 0);
   };
 
   if (loading) {
@@ -254,35 +367,137 @@ const ExpenseList = () => {
                   </div>
                   
                   <div className="expense-items-section">
-                    <h4>Items {expense.items && expense.items.length > 0 && `(${expense.items.length})`}</h4>
-                    {expense.items && expense.items.length > 0 ? (
-                      <div className="items-list">
-                        <div className="items-header">
-                          <span className="item-name-header">Item</span>
-                          <span className="item-qty-header">Qty</span>
-                          <span className="item-price-header">Price</span>
-                          <span className="item-subtotal-header">Subtotal</span>
+                    <div className="items-section-header">
+                      <h4>Items {editingItems !== expense.expenseId && expense.items && expense.items.length > 0 && `(${expense.items.length})`}</h4>
+                      {editingItems === expense.expenseId ? (
+                        <div className="items-edit-actions">
+                          <button
+                            onClick={handleAddItem}
+                            className="add-item-btn"
+                            disabled={updatingItems}
+                          >
+                            + Add Item
+                          </button>
+                          <button
+                            onClick={() => handleItemsSave(expense.expenseId)}
+                            className="save-items-btn"
+                            disabled={updatingItems}
+                          >
+                            {updatingItems ? 'Saving...' : 'Save Items'}
+                          </button>
+                          <button
+                            onClick={handleItemsCancel}
+                            className="cancel-items-btn"
+                            disabled={updatingItems}
+                          >
+                            Cancel
+                          </button>
                         </div>
-                        {expense.items.map((item, index) => (
-                          <div key={index} className="item-row">
-                            <span className="item-name">{item.name || 'Unknown Item'}</span>
-                            <span className="item-qty">{item.quantity || 1}</span>
-                            <span className="item-price">{formatCurrency(item.price || 0)}</span>
-                            <span className="item-subtotal">{formatCurrency(item.subtotal || item.price || 0)}</span>
+                      ) : (
+                        <button
+                          onClick={() => handleItemsEdit(expense)}
+                          className="edit-items-btn"
+                          title="Edit items"
+                        >
+                          ✏️ Edit Items
+                        </button>
+                      )}
+                    </div>
+                    
+                    {editingItems === expense.expenseId ? (
+                      // Edit mode
+                      <div className="items-edit-list">
+                        {tempItems.length > 0 ? (
+                          <>
+                            <div className="items-header">
+                              <span className="item-name-header">Item</span>
+                              <span className="item-qty-header">Qty</span>
+                              <span className="item-price-header">Price</span>
+                              <span className="item-subtotal-header">Subtotal</span>
+                              <span className="item-actions-header">Actions</span>
+                            </div>
+                            {tempItems.map((item, index) => (
+                              <div key={index} className="item-row item-row-editing">
+                                <input
+                                  type="text"
+                                  value={item.name || ''}
+                                  onChange={(e) => handleItemChange(index, 'name', e.target.value)}
+                                  className="item-input item-name-input"
+                                  placeholder="Item name"
+                                />
+                                <input
+                                  type="number"
+                                  value={item.quantity || 1}
+                                  onChange={(e) => handleItemChange(index, 'quantity', e.target.value)}
+                                  className="item-input item-qty-input"
+                                  min="0.01"
+                                  step="0.01"
+                                />
+                                <input
+                                  type="number"
+                                  value={item.price || 0}
+                                  onChange={(e) => handleItemChange(index, 'price', e.target.value)}
+                                  className="item-input item-price-input"
+                                  min="0"
+                                  step="0.01"
+                                />
+                                <span className="item-subtotal">
+                                  {formatCurrency((item.quantity || 1) * (item.price || 0))}
+                                </span>
+                                <button
+                                  onClick={() => handleRemoveItem(index)}
+                                  className="remove-item-btn"
+                                  disabled={updatingItems}
+                                  title="Remove item"
+                                >
+                                  🗑️
+                                </button>
+                              </div>
+                            ))}
+                            <div className="items-total">
+                              <span className="items-total-label">Items Total:</span>
+                              <span className="items-total-amount">
+                                {formatCurrency(calculateItemsTotal(tempItems))}
+                              </span>
+                            </div>
+                          </>
+                        ) : (
+                          <div className="items-placeholder">
+                            <p>No items. Click "Add Item" to add items to this receipt.</p>
                           </div>
-                        ))}
-                        <div className="items-total">
-                          <span className="items-total-label">Items Total:</span>
-                          <span className="items-total-amount">
-                            {formatCurrency(expense.items.reduce((sum, item) => sum + (item.subtotal || item.price || 0), 0))}
-                          </span>
-                        </div>
+                        )}
                       </div>
                     ) : (
-                      <div className="items-placeholder">
-                        <p>No items extracted from this receipt.</p>
-                        <p className="items-note">Items may not be available for older receipts or if extraction failed.</p>
-                      </div>
+                      // View mode
+                      expense.items && expense.items.length > 0 ? (
+                        <div className="items-list">
+                          <div className="items-header">
+                            <span className="item-name-header">Item</span>
+                            <span className="item-qty-header">Qty</span>
+                            <span className="item-price-header">Price</span>
+                            <span className="item-subtotal-header">Subtotal</span>
+                          </div>
+                          {expense.items.map((item, index) => (
+                            <div key={index} className="item-row">
+                              <span className="item-name">{item.name || 'Unknown Item'}</span>
+                              <span className="item-qty">{item.quantity || 1}</span>
+                              <span className="item-price">{formatCurrency(item.price || 0)}</span>
+                              <span className="item-subtotal">{formatCurrency(item.subtotal || item.price || 0)}</span>
+                            </div>
+                          ))}
+                          <div className="items-total">
+                            <span className="items-total-label">Items Total:</span>
+                            <span className="items-total-amount">
+                              {formatCurrency(calculateItemsTotal(expense.items))}
+                            </span>
+                          </div>
+                        </div>
+                      ) : (
+                        <div className="items-placeholder">
+                          <p>No items extracted from this receipt.</p>
+                          <p className="items-note">Click "Edit Items" to manually add items.</p>
+                        </div>
+                      )
                     )}
                   </div>
                 </div>
