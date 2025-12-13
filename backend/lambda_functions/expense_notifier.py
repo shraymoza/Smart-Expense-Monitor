@@ -7,6 +7,7 @@ from decimal import Decimal
 # Initialize AWS clients
 dynamodb = boto3.resource('dynamodb')
 ses_client = boto3.client('ses')
+cloudwatch = boto3.client('cloudwatch')
 
 # Get table names from environment variables
 EXPENSES_TABLE = os.environ.get('EXPENSES_TABLE_NAME')
@@ -15,6 +16,29 @@ FROM_EMAIL = os.environ.get('FROM_EMAIL', 'shraym@proton.me')
 
 expenses_table = dynamodb.Table(EXPENSES_TABLE)
 user_settings_table = dynamodb.Table(USER_SETTINGS_TABLE) if USER_SETTINGS_TABLE else None
+
+
+def publish_metric(metric_name, value, unit='Count', dimensions=None):
+    """Publish custom metric to CloudWatch"""
+    try:
+        metric_data = {
+            'MetricName': metric_name,
+            'Value': value,
+            'Unit': unit,
+            'Namespace': 'SmartExpenseMonitor'
+        }
+        
+        if dimensions:
+            metric_data['Dimensions'] = dimensions
+        
+        cloudwatch.put_metric_data(
+            Namespace='SmartExpenseMonitor',
+            MetricData=[metric_data]
+        )
+        print(f"Published metric: {metric_name} = {value} {unit}")
+    except Exception as e:
+        print(f"Error publishing metric {metric_name}: {str(e)}")
+        # Don't fail the main operation if metric publishing fails
 
 
 def lambda_handler(event, context):
@@ -142,6 +166,22 @@ def check_and_notify_user(user_setting):
         threshold_float = float(threshold)
         
         print(f"User {userId}: Monthly total: ${monthly_total}, Threshold: ${threshold_float}")
+        
+        # Publish monthly spending metric
+        try:
+            publish_metric('MonthlySpending', monthly_total, 'None', [
+                {'Name': 'Month', 'Value': current_month},
+                {'Name': 'UserId', 'Value': userId}
+            ])
+            
+            # Publish threshold exceeded metric if applicable
+            if monthly_total > threshold_float:
+                publish_metric('ThresholdExceeded', 1, 'Count', [
+                    {'Name': 'Month', 'Value': current_month},
+                    {'Name': 'UserId', 'Value': userId}
+                ])
+        except Exception as e:
+            print(f"Error publishing metrics: {str(e)}")
         
         # Check if threshold is exceeded
         if monthly_total > threshold_float:

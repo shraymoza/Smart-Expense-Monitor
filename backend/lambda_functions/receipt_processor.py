@@ -1,6 +1,7 @@
 import json
 import boto3
 import os
+import time
 from datetime import datetime
 from decimal import Decimal
 import uuid
@@ -10,6 +11,7 @@ import re
 dynamodb = boto3.resource('dynamodb')
 s3_client = boto3.client('s3')
 textract_client = boto3.client('textract')
+cloudwatch = boto3.client('cloudwatch')
 
 
 def decimal_default(obj):
@@ -17,6 +19,29 @@ def decimal_default(obj):
     if isinstance(obj, Decimal):
         return float(obj)
     raise TypeError(f"Object of type {type(obj)} is not JSON serializable")
+
+
+def publish_metric(metric_name, value, unit='Count', dimensions=None):
+    """Publish custom metric to CloudWatch"""
+    try:
+        metric_data = {
+            'MetricName': metric_name,
+            'Value': value,
+            'Unit': unit,
+            'Namespace': 'SmartExpenseMonitor'
+        }
+        
+        if dimensions:
+            metric_data['Dimensions'] = dimensions
+        
+        cloudwatch.put_metric_data(
+            Namespace='SmartExpenseMonitor',
+            MetricData=[metric_data]
+        )
+        print(f"Published metric: {metric_name} = {value} {unit}")
+    except Exception as e:
+        print(f"Error publishing metric {metric_name}: {str(e)}")
+        # Don't fail the main operation if metric publishing fails
 
 # Get table names from environment variables
 EXPENSES_TABLE = os.environ.get('EXPENSES_TABLE_NAME')
@@ -171,6 +196,8 @@ def handle_api_event(event):
 
 def extract_text_from_receipt(bucket, key):
     """Extract text from receipt using AWS Textract"""
+    start_time = time.time()
+    
     try:
         print(f"Starting Textract extraction for s3://{bucket}/{key}")
         response = textract_client.detect_document_text(
@@ -193,7 +220,16 @@ def extract_text_from_receipt(bucket, key):
         
         extracted_text = '\n'.join(text_blocks)
         text_length = len(extracted_text)
-        print(f"Textract extraction complete. Extracted {text_length} characters, {len(text_blocks)} lines")
+        
+        # Calculate processing time
+        processing_time = (time.time() - start_time) * 1000  # Convert to milliseconds
+        print(f"Textract extraction complete. Extracted {text_length} characters, {len(text_blocks)} lines in {processing_time:.2f}ms")
+        
+        # Publish Textract processing time metric
+        try:
+            publish_metric('TextractProcessingTime', processing_time, 'Milliseconds')
+        except Exception as e:
+            print(f"Error publishing Textract metric: {str(e)}")
         
         # Log first 200 characters for debugging
         if extracted_text:
@@ -609,6 +645,38 @@ def save_expense(expense_data, userId):
     
     expenses_table.put_item(Item=expense_data)
     print(f"Saved expense for user {userId}: {expense_data['expenseId']}")
+    
+    # Publish custom metrics
+    try:
+        amount_value = float(expense_data.get('amount', 0))
+        
+        # Metric: Total expenses processed
+        publish_metric('ExpensesProcessed', 1, 'Count')
+        
+        # Metric: Total expense amount
+        publish_metric('TotalExpenseAmount', amount_value, 'None')
+        
+        # Metric: Expense by category
+        category = expense_data.get('category', 'Other')
+        publish_metric('ExpenseByCategory', amount_value, 'None', [
+            {'Name': 'Category', 'Value': category}
+        ])
+        
+        # Metric: Monthly spending (for current month)
+        expense_date = expense_data.get('date', datetime.utcnow().isoformat())
+        if expense_date:
+            try:
+                date_obj = datetime.fromisoformat(expense_date.replace('Z', '+00:00'))
+                month_key = date_obj.strftime('%Y-%m')
+                publish_metric('MonthlySpending', amount_value, 'None', [
+                    {'Name': 'Month', 'Value': month_key},
+                    {'Name': 'UserId', 'Value': userId}
+                ])
+            except (ValueError, AttributeError):
+                pass
+    except Exception as e:
+        print(f"Error publishing metrics: {str(e)}")
+        # Don't fail expense saving if metrics fail
 
 
 def get_expenses(event):
