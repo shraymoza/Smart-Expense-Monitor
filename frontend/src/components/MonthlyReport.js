@@ -1,4 +1,6 @@
 import React, { useEffect, useState } from 'react';
+import DatePicker from 'react-datepicker';
+import 'react-datepicker/dist/react-datepicker.css';
 import { getExpenses } from '../services/api';
 import './MonthlyReport.css';
 
@@ -6,11 +8,13 @@ const MonthlyReport = () => {
   const [expenses, setExpenses] = useState([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState('');
-  const [selectedMonth, setSelectedMonth] = useState(new Date().toISOString().slice(0, 7)); // YYYY-MM
+  const [selectionMode, setSelectionMode] = useState('month'); // 'month' or 'range'
+  const [dateRange, setDateRange] = useState([new Date(), null]); // Initialize with current date
+  const [startDate, endDate] = dateRange;
 
   useEffect(() => {
     loadExpenses();
-  }, [selectedMonth]);
+  }, [dateRange]);
 
   const loadExpenses = async () => {
     try {
@@ -19,14 +23,47 @@ const MonthlyReport = () => {
       const data = await getExpenses();
       const expensesList = Array.isArray(data) ? data : (data.items || []);
       
-      // Filter expenses for selected month
-      const monthExpenses = expensesList.filter(expense => {
-        const expenseDate = expense.date || expense.createdAt;
-        if (!expenseDate) return false;
-        return expenseDate.startsWith(selectedMonth);
-      });
+      // Filter expenses based on date range or month
+      let filteredExpenses = expensesList;
       
-      setExpenses(monthExpenses);
+      if (selectionMode === 'month' && startDate) {
+        // Filter by month
+        const year = startDate.getFullYear();
+        const month = String(startDate.getMonth() + 1).padStart(2, '0');
+        const monthPrefix = `${year}-${month}`;
+        
+        filteredExpenses = expensesList.filter(expense => {
+          const expenseDate = expense.date || expense.createdAt;
+          if (!expenseDate) return false;
+          return expenseDate.startsWith(monthPrefix);
+        });
+      } else if (selectionMode === 'range' && startDate && endDate) {
+        // Filter by date range
+        const start = new Date(startDate);
+        start.setHours(0, 0, 0, 0);
+        const end = new Date(endDate);
+        end.setHours(23, 59, 59, 999);
+        
+        filteredExpenses = expensesList.filter(expense => {
+          const expenseDate = expense.date || expense.createdAt;
+          if (!expenseDate) return false;
+          const expDate = new Date(expenseDate);
+          return expDate >= start && expDate <= end;
+        });
+      } else if (startDate) {
+        // If only start date is selected, show that month
+        const year = startDate.getFullYear();
+        const month = String(startDate.getMonth() + 1).padStart(2, '0');
+        const monthPrefix = `${year}-${month}`;
+        
+        filteredExpenses = expensesList.filter(expense => {
+          const expenseDate = expense.date || expense.createdAt;
+          if (!expenseDate) return false;
+          return expenseDate.startsWith(monthPrefix);
+        });
+      }
+      
+      setExpenses(filteredExpenses);
     } catch (err) {
       console.error('Error loading expenses:', err);
       setError(err.message || 'Failed to load expenses');
@@ -59,10 +96,22 @@ const MonthlyReport = () => {
     return acc;
   }, {});
 
-  const monthName = new Date(selectedMonth + '-01').toLocaleDateString('en-US', { 
-    year: 'numeric', 
-    month: 'long' 
-  });
+  const getDateRangeLabel = () => {
+    if (selectionMode === 'month' && startDate) {
+      return startDate.toLocaleDateString('en-US', { 
+        year: 'numeric', 
+        month: 'long' 
+      });
+    } else if (selectionMode === 'range' && startDate && endDate) {
+      return `${startDate.toLocaleDateString('en-US', { month: 'short', day: 'numeric', year: 'numeric' })} - ${endDate.toLocaleDateString('en-US', { month: 'short', day: 'numeric', year: 'numeric' })}`;
+    } else if (startDate) {
+      return startDate.toLocaleDateString('en-US', { 
+        year: 'numeric', 
+        month: 'long' 
+      });
+    }
+    return 'All Time';
+  };
 
   if (loading) {
     return (
@@ -84,18 +133,58 @@ const MonthlyReport = () => {
   return (
     <div className="monthly-report-container">
       <div className="report-header">
-        <h3>Monthly Expense Report</h3>
-        <input
-          type="month"
-          value={selectedMonth}
-          onChange={(e) => setSelectedMonth(e.target.value)}
-          className="month-selector"
-        />
+        <h3>Expense Report</h3>
+        <div className="date-picker-container">
+          <div className="selection-mode-toggle">
+            <button
+              className={`mode-btn ${selectionMode === 'month' ? 'active' : ''}`}
+              onClick={() => {
+                setSelectionMode('month');
+                setDateRange([startDate || new Date(), null]);
+              }}
+            >
+              Month
+            </button>
+            <button
+              className={`mode-btn ${selectionMode === 'range' ? 'active' : ''}`}
+              onClick={() => {
+                setSelectionMode('range');
+                setDateRange([startDate || new Date(), null]);
+              }}
+            >
+              Date Range
+            </button>
+          </div>
+          {selectionMode === 'month' ? (
+            <DatePicker
+              selected={startDate}
+              onChange={(date) => setDateRange([date, null])}
+              dateFormat="MMMM yyyy"
+              showMonthYearPicker
+              showFullMonthYearPicker
+              placeholderText="Select month"
+              className="date-picker-input"
+              wrapperClassName="date-picker-wrapper"
+            />
+          ) : (
+            <DatePicker
+              selected={startDate}
+              onChange={(update) => setDateRange(update)}
+              startDate={startDate}
+              endDate={endDate}
+              selectsRange
+              dateFormat="MMM dd, yyyy"
+              placeholderText="Select date range"
+              className="date-picker-input"
+              wrapperClassName="date-picker-wrapper"
+            />
+          )}
+        </div>
       </div>
 
       <div className="report-summary">
         <div className="summary-card">
-          <div className="summary-label">Total for {monthName}</div>
+          <div className="summary-label">Total for {getDateRangeLabel()}</div>
           <div className="summary-value">{formatCurrency(totalAmount)}</div>
         </div>
         <div className="summary-card">
@@ -106,7 +195,7 @@ const MonthlyReport = () => {
 
       {expenses.length === 0 ? (
         <div className="empty-state">
-          <p>No expenses found for {monthName}. Upload receipts to see your expenses!</p>
+          <p>No expenses found for {getDateRangeLabel()}. Upload receipts to see your expenses!</p>
         </div>
       ) : (
         <>

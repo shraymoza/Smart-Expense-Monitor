@@ -1,6 +1,6 @@
-import React, { useEffect, useState } from 'react';
+import React, { useEffect, useState, useRef } from 'react';
 import { useNavigate } from 'react-router-dom';
-import { signOut, getCurrentUser } from 'aws-amplify/auth';
+import { signOut, getCurrentUser, fetchUserAttributes } from 'aws-amplify/auth';
 import ReceiptUpload from '../components/ReceiptUpload';
 import ExpenseList from '../components/ExpenseList';
 import MonthlyReport from '../components/MonthlyReport';
@@ -11,19 +11,47 @@ import './Dashboard.css';
 const Dashboard = () => {
   const navigate = useNavigate();
   const [user, setUser] = useState(null);
+  const [userName, setUserName] = useState('');
   const [expenses, setExpenses] = useState([]);
   const [loading, setLoading] = useState(true);
   const [activeView, setActiveView] = useState('dashboard'); // 'dashboard', 'history', 'report'
+  const [showMenu, setShowMenu] = useState(false);
+  const menuRef = useRef(null);
 
   useEffect(() => {
     loadUser();
     loadExpenses();
   }, []);
 
+  // Close menu when clicking outside
+  useEffect(() => {
+    const handleClickOutside = (event) => {
+      if (menuRef.current && !menuRef.current.contains(event.target)) {
+        setShowMenu(false);
+      }
+    };
+
+    document.addEventListener('mousedown', handleClickOutside);
+    return () => {
+      document.removeEventListener('mousedown', handleClickOutside);
+    };
+  }, []);
+
   const loadUser = async () => {
     try {
       const currentUser = await getCurrentUser();
       setUser(currentUser);
+      
+      // Get user attributes to find name
+      try {
+        const attributes = await fetchUserAttributes();
+        // Try to get name from attributes (name, given_name, or username as fallback)
+        const name = attributes.name || attributes.given_name || attributes['custom:name'] || currentUser.username || '';
+        setUserName(name);
+      } catch (attrError) {
+        // Fallback to username if attributes can't be fetched
+        setUserName(currentUser.username || '');
+      }
     } catch (error) {
       console.error('Error loading user:', error);
     }
@@ -78,21 +106,48 @@ const Dashboard = () => {
     }).format(amount || 0);
   };
 
+  const handleSettingsClick = () => {
+    setActiveView('settings');
+    setShowMenu(false);
+  };
+
   return (
     <div className="dashboard-container">
       <header className="dashboard-header">
         <div className="header-content">
           <h1>Smart Expense Monitor</h1>
-          <button onClick={handleLogout} className="logout-button">
-            Logout
-          </button>
+          <div className="header-actions" ref={menuRef}>
+            <button 
+              onClick={() => setShowMenu(!showMenu)}
+              className="gear-icon-button"
+              title="Settings"
+            >
+              ⚙️
+            </button>
+            {showMenu && (
+              <div className="settings-dropdown">
+                <button 
+                  onClick={handleSettingsClick}
+                  className="dropdown-item"
+                >
+                  Settings
+                </button>
+                <button 
+                  onClick={handleLogout}
+                  className="dropdown-item"
+                >
+                  Logout
+                </button>
+              </div>
+            )}
+          </div>
         </div>
       </header>
 
       <main className="dashboard-main">
         <div className="dashboard-content">
           <div className="welcome-section">
-            <h2>Welcome to Your Dashboard{user && `, ${user.username}`}</h2>
+            <h2>Welcome to Your Dashboard{userName && `, ${userName}`}</h2>
             <p>Upload your receipts and track your expenses here.</p>
           </div>
 
@@ -120,17 +175,6 @@ const Dashboard = () => {
                 onClick={() => setActiveView(activeView === 'history' ? 'dashboard' : 'history')}
               >
                 {activeView === 'history' ? 'Back to Dashboard' : 'View History'}
-              </button>
-            </div>
-
-            <div className="dashboard-card">
-              <h3>Settings</h3>
-              <p>Configure notification preferences</p>
-              <button 
-                className="card-button"
-                onClick={() => setActiveView(activeView === 'settings' ? 'dashboard' : 'settings')}
-              >
-                {activeView === 'settings' ? 'Back to Dashboard' : 'View Settings'}
               </button>
             </div>
           </div>
