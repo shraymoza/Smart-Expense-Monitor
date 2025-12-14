@@ -1,0 +1,52 @@
+﻿{
+  "api_gateway_url": {
+    "sensitive": false,
+    "type": "string",
+    "value": "https://my2iasvlh6.execute-api.us-east-1.amazonaws.com/dev"
+  },
+  "cognito_user_pool_arn": {
+    "sensitive": false,
+    "type": "string",
+    "value": "arn:aws:cognito-idp:us-east-1:889691807381:userpool/us-east-1_U9qgkCgUa"
+  },
+  "cognito_user_pool_client_id": {
+    "sensitive": false,
+    "type": "string",
+    "value": "2hoj90djbc1uvf5glcabprr7pq"
+  },
+  "cognito_user_pool_id": {
+    "sensitive": false,
+    "type": "string",
+    "value": "us-east-1_U9qgkCgUa"
+  },
+  "dynamodb_table_arn": {
+    "sensitive": false,
+    "type": "string",
+    "value": "arn:aws:dynamodb:us-east-1:889691807381:table/smart-expense-monitor-dev-expenses"
+  },
+  "dynamodb_table_name": {
+    "sensitive": false,
+    "type": "string",
+    "value": "smart-expense-monitor-dev-expenses"
+  },
+  "lambda_function_arn": {
+    "sensitive": false,
+    "type": "string",
+    "value": "arn:aws:lambda:us-east-1:889691807381:function:smart-expense-monitor-dev-receipt-processor"
+  },
+  "lambda_function_name": {
+    "sensitive": false,
+    "type": "string",
+    "value": "smart-expense-monitor-dev-receipt-processor"
+  },
+  "s3_bucket_arn": {
+    "sensitive": false,
+    "type": "string",
+    "value": "arn:aws:s3:::smart-expense-monitor-receipts"
+  },
+  "s3_bucket_name": {
+    "sensitive": false,
+    "type": "string",
+    "value": "smart-expense-monitor-receipts"
+  }
+}

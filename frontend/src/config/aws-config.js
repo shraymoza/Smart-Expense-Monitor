@@ -4,9 +4,9 @@
 
 const awsConfig = {
   region: process.env.REACT_APP_AWS_REGION || 'us-east-1',
-  userPoolId: process.env.REACT_APP_COGNITO_USER_POOL_ID || 'us-east-1_U9qgkCgUa',
-  userPoolWebClientId: process.env.REACT_APP_COGNITO_CLIENT_ID || '2hoj90djbc1uvf5glcabprr7pq',
-  apiGatewayUrl: process.env.REACT_APP_API_GATEWAY_URL || 'https://my2iasvlh6.execute-api.us-east-1.amazonaws.com/dev',
+  userPoolId: process.env.REACT_APP_COGNITO_USER_POOL_ID || 'us-east-1_hcikLzSBf',
+  userPoolWebClientId: process.env.REACT_APP_COGNITO_CLIENT_ID || '3cq16gtlq8lj6pplthia9913ki',
+  apiGatewayUrl: process.env.REACT_APP_API_GATEWAY_URL || 'https://3grefxqkha.execute-api.us-east-1.amazonaws.com/dev',
   s3BucketName: process.env.REACT_APP_S3_BUCKET_NAME || 'smart-expense-monitor-receipts'
 };
 
