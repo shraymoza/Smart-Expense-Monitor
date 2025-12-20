@@ -4,12 +4,10 @@ import os
 from datetime import datetime
 from decimal import Decimal
 
-# Initialize AWS clients
 dynamodb = boto3.resource('dynamodb')
 ses_client = boto3.client('ses')
 cloudwatch = boto3.client('cloudwatch')
 
-# Get table names from environment variables
 EXPENSES_TABLE = os.environ.get('EXPENSES_TABLE_NAME')
 USER_SETTINGS_TABLE = os.environ.get('USER_SETTINGS_TABLE_NAME')
 FROM_EMAIL = os.environ.get('FROM_EMAIL', 'shraym@proton.me')
@@ -19,7 +17,7 @@ user_settings_table = dynamodb.Table(USER_SETTINGS_TABLE) if USER_SETTINGS_TABLE
 
 
 def publish_metric(metric_name, value, unit='Count', dimensions=None):
-    """Publish custom metric to CloudWatch"""
+    """Send custom metric to CloudWatch"""
     try:
         metric_data = {
             'MetricName': metric_name,
@@ -27,7 +25,6 @@ def publish_metric(metric_name, value, unit='Count', dimensions=None):
             'Unit': unit,
             'Namespace': 'SmartExpenseMonitor'
         }
-        
         if dimensions:
             metric_data['Dimensions'] = dimensions
         
@@ -38,36 +35,24 @@ def publish_metric(metric_name, value, unit='Count', dimensions=None):
         print(f"Published metric: {metric_name} = {value} {unit}")
     except Exception as e:
         print(f"Error publishing metric {metric_name}: {str(e)}")
-        # Don't fail the main operation if metric publishing fails
 
 
 def lambda_handler(event, context):
-    """
-    Lambda handler for checking monthly expenses and sending notifications.
-    Can be triggered by:
-    1. EventBridge scheduled event (monthly check)
-    2. API Gateway (manual trigger)
-    3. Receipt processor (after expense is saved) - real-time check
-    """
-    
+    """Main handler - routes to scheduled, API, or real-time check handlers"""
     print(f"Received event: {json.dumps(event)}")
     
-    # Handle EventBridge scheduled event
     if 'source' in event and event['source'] == 'aws.events':
         return check_all_users_expenses()
     
-    # Handle API Gateway event (manual trigger)
     if 'httpMethod' in event or 'requestContext' in event:
         return handle_api_event(event)
     
-    # Handle receipt processor trigger (real-time check after upload)
     if 'source' in event and event['source'] == 'receipt_processor':
         userId = event.get('userId')
         if userId:
             print(f"Real-time expense check triggered for user: {userId}")
             return check_single_user_expenses(userId)
     
-    # Handle S3 event (legacy - for backward compatibility)
     if 'Records' in event:
         return handle_s3_event(event)
     
@@ -78,7 +63,7 @@ def lambda_handler(event, context):
 
 
 def check_all_users_expenses():
-    """Check expenses for all users and send notifications"""
+    """Check all users and send notifications if threshold exceeded"""
     try:
         if not user_settings_table:
             print("User settings table not configured")
@@ -87,7 +72,6 @@ def check_all_users_expenses():
                 'body': json.dumps({'message': 'User settings table not configured'})
             }
         
-        # Scan all user settings
         response = user_settings_table.scan()
         users = response.get('Items', [])
         
@@ -117,7 +101,7 @@ def check_all_users_expenses():
 
 
 def check_and_notify_user(user_setting):
-    """Check if user's monthly expenses exceed threshold and send notification"""
+    """Check if user exceeded monthly threshold and send email if needed"""
     try:
         userId = user_setting.get('userId')
         threshold = user_setting.get('monthlyThreshold')
@@ -131,10 +115,8 @@ def check_and_notify_user(user_setting):
             print(f"No email found for user {userId}")
             return False
         
-        # Get current month
         current_month = datetime.utcnow().strftime('%Y-%m')
         
-        # Query expenses for current month using DateIndex GSI
         try:
             response = expenses_table.query(
                 IndexName='DateIndex',
@@ -148,7 +130,6 @@ def check_and_notify_user(user_setting):
                 }
             )
         except Exception as e:
-            # Fallback to scan if GSI query fails
             print(f"GSI query failed, using scan: {str(e)}")
             response = expenses_table.scan(
                 FilterExpression='userId = :userId AND begins_with(#date, :month)',
@@ -167,14 +148,12 @@ def check_and_notify_user(user_setting):
         
         print(f"User {userId}: Monthly total: ${monthly_total}, Threshold: ${threshold_float}")
         
-        # Publish monthly spending metric
         try:
             publish_metric('MonthlySpending', monthly_total, 'None', [
                 {'Name': 'Month', 'Value': current_month},
                 {'Name': 'UserId', 'Value': userId}
             ])
             
-            # Publish threshold exceeded metric if applicable
             if monthly_total > threshold_float:
                 publish_metric('ThresholdExceeded', 1, 'Count', [
                     {'Name': 'Month', 'Value': current_month},
@@ -183,9 +162,7 @@ def check_and_notify_user(user_setting):
         except Exception as e:
             print(f"Error publishing metrics: {str(e)}")
         
-        # Check if threshold is exceeded
         if monthly_total > threshold_float:
-            # Send notification
             email_sent = send_notification_email(user_email, userId, monthly_total, threshold_float, current_month)
             if email_sent:
                 print(f"✓ Notification email sent successfully to {user_email}")
@@ -202,7 +179,7 @@ def check_and_notify_user(user_setting):
 
 
 def send_notification_email(user_email, userId, monthly_total, threshold, month):
-    """Send email notification to user"""
+    """Send expense threshold exceeded notification email via SES"""
     try:
         subject = f"Monthly Expense Alert - You've Exceeded Your Threshold"
         
@@ -281,26 +258,20 @@ Smart Expense Monitor Team
         error_message = str(e)
         print(f"Error sending email to {user_email}: {error_message}")
         
-        # Check if it's a verification error
         if "Email address is not verified" in error_message or "MessageRejected" in error_message:
             print(f"⚠️ SES Sandbox Mode: Email {user_email} is not verified in AWS SES.")
             print(f"   Please verify this email in AWS SES Console or request production access.")
-            print(f"   See SES_EMAIL_VERIFICATION.md for instructions.")
-            # Don't raise - just log the error so the function completes
-            # The user will need to verify their email in SES
             return False
         
-        # For other errors, raise to be handled by caller
         raise
 
 
 def handle_api_event(event):
-    """Handle API Gateway requests"""
+    """Handle API Gateway requests for manual notification checks"""
     http_method = event.get('httpMethod', '')
     path = event.get('path', '')
     
     if http_method == 'POST' and '/notifications/check' in path:
-        # Manual trigger to check all users
         return check_all_users_expenses()
     
     return {
@@ -314,17 +285,14 @@ def handle_api_event(event):
 
 
 def handle_s3_event(event):
-    """Handle S3 event - check expenses after new expense is saved"""
+    """Legacy handler for S3 events"""
     try:
-        # Extract userId from S3 key
         for record in event.get('Records', []):
             key = record['s3']['object']['key']
-            # Key format: users/{userId}/uploads/{filename}
             if '/users/' in key:
                 parts = key.split('/')
                 if len(parts) >= 2:
                     userId = parts[1]
-                    # Check this user's expenses
                     check_user_expenses_after_upload(userId)
         
         return {
@@ -340,7 +308,7 @@ def handle_s3_event(event):
 
 
 def check_single_user_expenses(userId):
-    """Check expenses for a single user and send notification if threshold exceeded"""
+    """Check single user's expenses and notify if threshold exceeded"""
     try:
         if not user_settings_table:
             print("User settings table not configured")
@@ -349,7 +317,6 @@ def check_single_user_expenses(userId):
                 'body': json.dumps({'message': 'User settings table not configured'})
             }
         
-        # Get user settings
         response = user_settings_table.get_item(Key={'userId': userId})
         if 'Item' not in response:
             print(f"No settings found for user {userId}")
@@ -378,12 +345,11 @@ def check_single_user_expenses(userId):
 
 
 def check_user_expenses_after_upload(userId):
-    """Check user's expenses after a new receipt is uploaded (legacy function)"""
+    """Legacy function - check user expenses after upload"""
     try:
         if not user_settings_table:
             return
         
-        # Get user settings
         response = user_settings_table.get_item(Key={'userId': userId})
         if 'Item' not in response:
             return

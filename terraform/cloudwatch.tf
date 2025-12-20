@@ -97,7 +97,7 @@ resource "aws_cloudwatch_metric_alarm" "threshold_exceeded" {
 }
 
 # ============================================
-# CloudWatch Dashboard (Optional)
+# CloudWatch Dashboard 
 # ============================================
 
 resource "aws_cloudwatch_dashboard" "expense_monitor" {

@@ -31,7 +31,7 @@ resource "aws_cognito_user_pool" "main" {
     email_sending_account = "COGNITO_DEFAULT"
   }
 
-  # Auto-verify email attribute (allows code resending)
+  # Auto-verify email attribute
   auto_verified_attributes = ["email"]
 
   # Account recovery
@@ -42,7 +42,7 @@ resource "aws_cognito_user_pool" "main" {
     }
   }
 
-  # MFA configuration (optional - can be enabled later)
+  # MFA configuration
   mfa_configuration = "OFF"
 
   # Lifecycle: Schema attributes cannot be modified after creation
